@@ -43,6 +43,7 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   document.body.innerHTML = ''
+  delete (window as unknown as { api?: unknown }).api
 })
 
 const mentionMessage = createMessage({
@@ -67,6 +68,31 @@ const clickButton = (label: string): void => {
   act(() => {
     button?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   })
+}
+
+const renderMessageItem = async (
+  message: ChatMessage,
+  artifacts?: React.ComponentProps<typeof WorkspaceMessageItem>['artifacts']
+): Promise<void> => {
+  await act(async () => {
+    root.render(
+      <WorkspaceMessageItem
+        message={message}
+        artifacts={artifacts}
+        onPreviewArtifact={noop}
+        onPreviewUploadAttachment={noop}
+        onOpenSkillMention={noop}
+        onPreviewMentionArtifact={noop}
+      />
+    )
+  })
+}
+
+const expectSplitFileName = (button: Element | null, prefix: string, extension: string): void => {
+  expect(button?.querySelector('[data-testid="file-name-prefix"]')?.textContent).toBe(prefix)
+  const extensionNode = button?.querySelector('[data-testid="file-name-extension"]')
+  expect(extensionNode?.textContent).toBe(extension)
+  expect(extensionNode?.className).toContain('shrink-0')
 }
 
 describe('WorkspaceMessageItem mention pills', () => {
@@ -114,6 +140,66 @@ describe('WorkspaceMessageItem mention pills', () => {
       path: '/p/clinical trial03.pdf',
       source: 'artifact'
     })
+  })
+})
+
+describe('WorkspaceMessageItem file names', () => {
+  it('keeps an uploaded attachment extension visible separately from its truncating prefix', async () => {
+    const name = 'long_uploaded_experiment_result.png'
+    const message = createMessage({
+      uploads: [
+        {
+          id: 'upload-1',
+          sessionId: 'session-1',
+          name: 'stored.png',
+          originalName: name,
+          path: '/p/stored.png',
+          mimeType: 'image/png',
+          size: 1024
+        }
+      ]
+    })
+
+    await renderMessageItem(message)
+
+    const button = container.querySelector(`[aria-label="Preview uploaded attachment ${name}"]`)
+    expectSplitFileName(button, 'long_uploaded_experiment_result', '.png')
+  })
+
+  it('keeps a generated file extension visible separately from its truncating prefix', async () => {
+    ;(window as unknown as { api: unknown }).api = {
+      previewResources: {
+        acquire: vi.fn().mockResolvedValue({ kind: 'text', content: '' }),
+        release: vi.fn().mockResolvedValue(undefined)
+      },
+      artifacts: {
+        readPreview: vi.fn().mockResolvedValue({
+          content: '',
+          encoding: 'utf8',
+          size: 0,
+          truncated: false
+        })
+      }
+    }
+    const name = 'long_generated_experiment_result.csv'
+    const message = createMessage({ id: 'm-assistant', role: 'agent', content: 'Done' })
+    const artifacts = [
+      {
+        id: 'artifact-1',
+        kind: 'managed-file' as const,
+        path: `/p/${name}`,
+        fileUrl: `file:///p/${name}`,
+        name,
+        mimeType: 'text/csv',
+        size: 10,
+        mtimeMs: 1
+      }
+    ]
+
+    await renderMessageItem(message, artifacts)
+
+    const button = container.querySelector(`[aria-label="Preview generated file ${name}"]`)
+    expectSplitFileName(button, 'long_generated_experiment_result', '.csv')
   })
 })
 

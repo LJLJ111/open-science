@@ -12,6 +12,7 @@ import { getUploadedAttachmentName } from '../../../../shared/uploads'
 import { ArtifactPreview } from './artifact-preview'
 import { ComposerEditor } from './composer/ComposerEditor'
 import { EditMessageConfirmDialog } from './EditMessageConfirmDialog'
+import { ExtensionPreservingFileName } from './ExtensionPreservingFileName'
 import {
   docFromMessageParts,
   docFromText,
@@ -193,7 +194,7 @@ const ArtifactCard = ({
         ) : null}
       </div>
       <div className="flex min-w-0 flex-1 items-center px-2">
-        <span className="min-w-0 flex-1 truncate text-[12px] leading-5">{artifactName}</span>
+        <ExtensionPreservingFileName name={artifactName} className="flex-1 text-[12px] leading-5" />
         {sizeLabel ? (
           <span className="ml-2 shrink-0 text-[11px] text-text-300">{sizeLabel}</span>
         ) : null}
@@ -294,7 +295,7 @@ const MessageUploadAttachmentList = ({
             title={attachment.path}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-text-300" aria-hidden="true" />
-            <span className="min-w-0 truncate">{attachmentName}</span>
+            <ExtensionPreservingFileName name={attachmentName} />
           </button>
         )
       })}
