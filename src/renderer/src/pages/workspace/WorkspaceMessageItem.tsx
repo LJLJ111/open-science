@@ -195,7 +195,7 @@ const ArtifactCard = ({
           </span>
         ) : null}
       </div>
-      <div className="flex min-w-0 flex-1 items-center px-2">
+      <div className="flex min-w-0 flex-1 items-center px-1.5">
         <ExtensionPreservingFileName
           name={artifactName}
           className="flex-1 text-[12px] leading-5"
