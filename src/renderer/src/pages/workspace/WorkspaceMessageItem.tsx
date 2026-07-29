@@ -79,6 +79,8 @@ const uploadedAttachmentButtonClassName =
 // keeps a long file/skill name from overflowing the bubble.
 const mentionPillClassName =
   'inline-block max-w-[220px] truncate align-middle rounded px-1.5 py-0.5 mx-0.5 text-sm font-medium'
+const artifactMentionPillClassName =
+  'inline-flex max-w-[220px] align-middle rounded px-1.5 py-0.5 mx-0.5 text-sm font-medium'
 // Interactive additions layered onto the pill shape when a mention resolves to a clickable target.
 const mentionButtonClassName =
   'cursor-pointer hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-200/60'
@@ -194,9 +196,13 @@ const ArtifactCard = ({
         ) : null}
       </div>
       <div className="flex min-w-0 flex-1 items-center px-2">
-        <ExtensionPreservingFileName name={artifactName} className="flex-1 text-[12px] leading-5" />
+        <ExtensionPreservingFileName
+          name={artifactName}
+          className="flex-1 text-[12px] leading-5"
+          compact
+        />
         {sizeLabel ? (
-          <span className="ml-2 shrink-0 text-[11px] text-text-300">{sizeLabel}</span>
+          <span className="ml-1 shrink-0 text-[11px] text-text-300">{sizeLabel}</span>
         ) : null}
       </div>
     </button>
@@ -295,7 +301,7 @@ const MessageUploadAttachmentList = ({
             title={attachment.path}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-text-300" aria-hidden="true" />
-            <ExtensionPreservingFileName name={attachmentName} />
+            <ExtensionPreservingFileName name={attachmentName} compact />
           </button>
         )
       })}
@@ -338,14 +344,14 @@ const MessagePartsContent = ({
             key={index}
             type="button"
             className={cn(
-              mentionPillClassName,
+              artifactMentionPillClassName,
               mentionButtonClassName,
               'bg-mention-chip text-mention-chip-foreground'
             )}
             onClick={() => onPreviewMentionArtifact(part)}
             aria-label={`Preview ${part.name}`}
           >
-            @{part.name}
+            @<ExtensionPreservingFileName name={part.name} />
           </button>
         )
       }

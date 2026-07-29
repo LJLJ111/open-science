@@ -1,25 +1,23 @@
 import { cn } from '@/lib/utils'
 
+import { getExtensionPreservingFileNameParts } from './extension-preserving-file-name'
+
 type ExtensionPreservingFileNameProps = {
   name: string
   className?: string
+  compact?: boolean
 }
-
-const BASENAME_TAIL_LENGTH = 11
 
 // Gives the basename room to truncate while keeping its ending and common final extensions visible.
 const ExtensionPreservingFileName = ({
   name,
-  className
+  className,
+  compact = false
 }: ExtensionPreservingFileNameProps): React.JSX.Element => {
-  const extensionIndex = name.lastIndexOf('.')
-  const hasExtension = extensionIndex > 0
-  const basename = hasExtension ? name.slice(0, extensionIndex) : name
-  const extension = hasExtension ? name.slice(extensionIndex) : ''
-  const hasLongBasename = basename.length > BASENAME_TAIL_LENGTH
-  // Split only long names so short filenames retain their original, uninterrupted rendering.
-  const head = hasLongBasename ? basename.slice(0, -BASENAME_TAIL_LENGTH) : basename
-  const tail = hasLongBasename ? basename.slice(-BASENAME_TAIL_LENGTH) : ''
+  const { head, tail, extension, isCompactAbbreviation } = getExtensionPreservingFileNameParts(
+    name,
+    compact
+  )
 
   return (
     <span
@@ -28,14 +26,19 @@ const ExtensionPreservingFileName = ({
         className
       )}
     >
-      <span data-testid="file-name-head" className="min-w-0 flex-1 truncate">
+      <span
+        data-testid="file-name-head"
+        className={cn('min-w-0', isCompactAbbreviation ? 'shrink-0' : 'flex-1 truncate')}
+      >
         {head}
       </span>
+      {isCompactAbbreviation ? (
+        <span data-testid="file-name-ellipsis" className="shrink-0">
+          ...
+        </span>
+      ) : null}
       {tail ? (
-        <span
-          data-testid="file-name-tail"
-          className="max-w-[50%] shrink-0 overflow-hidden text-ellipsis"
-        >
+        <span data-testid="file-name-tail" className="shrink-0">
           {tail}
         </span>
       ) : null}

@@ -28,18 +28,17 @@ describe('ExtensionPreservingFileName', () => {
     renderName('very_long_experiment_analysis_result_2025.csv')
 
     expect(container.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(
-      'very_long_experiment_analysis_'
+      'very_long_experiment_analysis_result'
     )
-    expect(container.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(
-      'result_2025'
-    )
+    expect(container.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe('_2025')
+    expect(container.querySelector('[data-testid="file-name-ellipsis"]')).toBeNull()
     expect(container.querySelector('[data-testid="file-name-extension"]')?.textContent).toBe('.csv')
   })
 
   it.each(['README', '.env'])('truncates %s as one name without an extension suffix', (name) => {
     renderName(name)
 
-    expect(container.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(name)
+    expect(container.textContent).toBe(name)
     expect(container.querySelector('[data-testid="file-name-extension"]')).toBeNull()
   })
 
@@ -47,6 +46,16 @@ describe('ExtensionPreservingFileName', () => {
     renderName('note.md')
 
     expect(container.textContent).toBe('note.md')
+  })
+
+  it('uses a shorter abbreviation in compact file cards', () => {
+    act(() =>
+      root.render(
+        <ExtensionPreservingFileName name="very_long_experiment_analysis_result_2025.csv" compact />
+      )
+    )
+
+    expect(container.textContent).toBe('ver...5.csv')
   })
 
   it('reserves room for the basename head when an extension is unusually long', () => {

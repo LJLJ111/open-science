@@ -95,6 +95,7 @@ const expectSplitFileName = (
   extension: string
 ): void => {
   expect(button?.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(head)
+  expect(button?.querySelector('[data-testid="file-name-ellipsis"]')?.textContent).toBe('...')
   expect(button?.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(tail)
   const extensionNode = button?.querySelector('[data-testid="file-name-extension"]')
   expect(extensionNode?.textContent).toBe(extension)
@@ -150,7 +151,7 @@ describe('WorkspaceMessageItem mention pills', () => {
 })
 
 describe('WorkspaceMessageItem file names', () => {
-  it('keeps an uploaded attachment extension visible separately from its truncating prefix', async () => {
+  it('uses the compact abbreviation for an uploaded attachment', async () => {
     const name = 'long_uploaded_experiment_result.png'
     const message = createMessage({
       uploads: [
@@ -169,10 +170,10 @@ describe('WorkspaceMessageItem file names', () => {
     await renderMessageItem(message)
 
     const button = container.querySelector(`[aria-label="Preview uploaded attachment ${name}"]`)
-    expectSplitFileName(button, 'long_uploaded_experi', 'ment_result', '.png')
+    expectSplitFileName(button, 'lon', 't', '.png')
   })
 
-  it('keeps a generated file extension visible separately from its truncating prefix', async () => {
+  it('uses the compact abbreviation for a generated file', async () => {
     ;(window as unknown as { api: unknown }).api = {
       previewResources: {
         acquire: vi.fn().mockResolvedValue({ kind: 'text', content: '' }),
@@ -205,7 +206,8 @@ describe('WorkspaceMessageItem file names', () => {
     await renderMessageItem(message, artifacts)
 
     const button = container.querySelector(`[aria-label="Preview generated file ${name}"]`)
-    expectSplitFileName(button, 'long_generated_experi', 'ment_result', '.csv')
+    expectSplitFileName(button, 'lon', 't', '.csv')
+    expect(button?.querySelector('span.text-text-300')?.className).toContain('ml-1')
   })
 })
 
