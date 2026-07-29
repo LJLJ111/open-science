@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from 'react'
+
 import { cn } from '@/lib/utils'
 
 import { getExtensionPreservingFileNameParts } from './extension-preserving-file-name'
@@ -14,21 +16,55 @@ const ExtensionPreservingFileName = ({
   className,
   compact = false
 }: ExtensionPreservingFileNameProps): React.JSX.Element => {
+  const rootRef = useRef<HTMLSpanElement>(null)
+  const measureRef = useRef<HTMLSpanElement>(null)
+  const [useCompactAbbreviation, setUseCompactAbbreviation] = useState(compact)
+
+  useLayoutEffect(() => {
+    if (!compact) return
+
+    const updateAbbreviation = (): void => {
+      const availableWidth = rootRef.current?.getBoundingClientRect().width ?? 0
+      const requiredWidth = measureRef.current?.getBoundingClientRect().width ?? 0
+      if (availableWidth === 0 || requiredWidth === 0) return
+      setUseCompactAbbreviation(requiredWidth > availableWidth)
+    }
+
+    updateAbbreviation()
+    const root = rootRef.current
+    if (!root || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(updateAbbreviation)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [compact, name])
+
   const { head, tail, extension, isCompactAbbreviation } = getExtensionPreservingFileNameParts(
     name,
-    compact
+    compact && useCompactAbbreviation
   )
 
   return (
     <span
+      ref={rootRef}
+      data-testid="file-name-root"
       className={cn(
         'flex min-w-0 max-w-full items-center overflow-hidden whitespace-nowrap',
         className
       )}
     >
+      {compact ? (
+        <span
+          ref={measureRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute invisible whitespace-nowrap"
+        >
+          {name}
+        </span>
+      ) : null}
       <span
         data-testid="file-name-head"
-        className={cn('min-w-0', isCompactAbbreviation ? 'shrink-0' : 'flex-1 truncate')}
+        className={cn('min-w-0', isCompactAbbreviation ? 'shrink-0' : 'shrink truncate')}
       >
         {head}
       </span>

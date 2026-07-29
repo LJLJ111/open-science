@@ -181,7 +181,7 @@ describe('PreviewPanel', () => {
 
     const card = container.querySelector('[data-testid="preview-card"]')
     const header = card?.querySelector('[data-testid="preview-card-header"]')
-    const titleTail = header?.querySelector('[data-testid="preview-title-tail"]')
+    const headerFileName = header?.querySelector('[data-testid="file-name-root"]')
     const tabBar = container.querySelector('[aria-label="Open previews"]')
     const fileTab = tabBar?.querySelector(`[role="tab"][title="${name}"]`)
 
@@ -193,9 +193,15 @@ describe('PreviewPanel', () => {
     expect(card?.parentElement?.className).toContain('pr-1')
     expect(card?.parentElement?.className).not.toContain('px-2')
     expect(header?.className).toContain('h-8')
-    expect(titleTail?.textContent?.endsWith('.csv')).toBe(true)
-    expect(titleTail?.className).toContain('max-w-')
-    expect(titleTail?.className).toContain('overflow-hidden')
+    expect(headerFileName?.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(
+      'global_climate_anomaly_analysis_1850'
+    )
+    expect(headerFileName?.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(
+      '-2025'
+    )
+    expect(headerFileName?.querySelector('[data-testid="file-name-extension"]')?.textContent).toBe(
+      '.csv'
+    )
     expect(header?.querySelector(`[aria-label="Download ${name}"]`)).not.toBeNull()
     expect(
       header?.querySelector(`[aria-label="Open full screen preview of ${name}"]`)

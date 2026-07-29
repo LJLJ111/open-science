@@ -19,20 +19,23 @@ const getExtensionPreservingFileNameParts = (
   const hasExtension = extensionIndex > 0
   const basename = hasExtension ? name.slice(0, extensionIndex) : name
   const extension = hasExtension ? name.slice(extensionIndex) : ''
-  const isCompactAbbreviation = compact && basename.length >= COMPACT_BASENAME_MIN_LENGTH
+  // File names can end in emoji; split by Unicode code point so a compact tail never becomes a
+  // lone UTF-16 surrogate and renders as a replacement character.
+  const basenameCharacters = Array.from(basename)
+  const isCompactAbbreviation = compact && basenameCharacters.length >= COMPACT_BASENAME_MIN_LENGTH
 
   if (isCompactAbbreviation) {
     return {
-      head: basename.slice(0, CARD_HEAD_LENGTH),
-      tail: basename.slice(-CARD_TAIL_LENGTH),
+      head: basenameCharacters.slice(0, CARD_HEAD_LENGTH).join(''),
+      tail: basenameCharacters.slice(-CARD_TAIL_LENGTH).join(''),
       extension,
       isCompactAbbreviation
     }
   }
 
   return {
-    head: basename.slice(0, -DEFAULT_TAIL_LENGTH),
-    tail: basename.slice(-DEFAULT_TAIL_LENGTH),
+    head: basenameCharacters.slice(0, -DEFAULT_TAIL_LENGTH).join(''),
+    tail: basenameCharacters.slice(-DEFAULT_TAIL_LENGTH).join(''),
     extension,
     isCompactAbbreviation
   }

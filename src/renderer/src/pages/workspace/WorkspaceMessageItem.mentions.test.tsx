@@ -151,7 +151,7 @@ describe('WorkspaceMessageItem mention pills', () => {
 })
 
 describe('WorkspaceMessageItem file names', () => {
-  it('uses the compact abbreviation for an uploaded attachment', async () => {
+  it('uses the compact fallback for an uploaded attachment', async () => {
     const name = 'long_uploaded_experiment_result.png'
     const message = createMessage({
       uploads: [
@@ -173,7 +173,7 @@ describe('WorkspaceMessageItem file names', () => {
     expectSplitFileName(button, 'lon', 't', '.png')
   })
 
-  it('uses the compact abbreviation for a generated file', async () => {
+  it('uses the compact fallback for a generated file', async () => {
     ;(window as unknown as { api: unknown }).api = {
       previewResources: {
         acquire: vi.fn().mockResolvedValue({ kind: 'text', content: '' }),
