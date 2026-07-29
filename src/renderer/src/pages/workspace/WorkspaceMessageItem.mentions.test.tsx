@@ -88,8 +88,14 @@ const renderMessageItem = async (
   })
 }
 
-const expectSplitFileName = (button: Element | null, prefix: string, extension: string): void => {
-  expect(button?.querySelector('[data-testid="file-name-prefix"]')?.textContent).toBe(prefix)
+const expectSplitFileName = (
+  button: Element | null,
+  head: string,
+  tail: string,
+  extension: string
+): void => {
+  expect(button?.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(head)
+  expect(button?.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(tail)
   const extensionNode = button?.querySelector('[data-testid="file-name-extension"]')
   expect(extensionNode?.textContent).toBe(extension)
   expect(extensionNode?.className).toContain('shrink-0')
@@ -163,7 +169,7 @@ describe('WorkspaceMessageItem file names', () => {
     await renderMessageItem(message)
 
     const button = container.querySelector(`[aria-label="Preview uploaded attachment ${name}"]`)
-    expectSplitFileName(button, 'long_uploaded_experiment_result', '.png')
+    expectSplitFileName(button, 'long_uploaded_experi', 'ment_result', '.png')
   })
 
   it('keeps a generated file extension visible separately from its truncating prefix', async () => {
@@ -199,7 +205,7 @@ describe('WorkspaceMessageItem file names', () => {
     await renderMessageItem(message, artifacts)
 
     const button = container.querySelector(`[aria-label="Preview generated file ${name}"]`)
-    expectSplitFileName(button, 'long_generated_experiment_result', '.csv')
+    expectSplitFileName(button, 'long_generated_experi', 'ment_result', '.csv')
   })
 })
 

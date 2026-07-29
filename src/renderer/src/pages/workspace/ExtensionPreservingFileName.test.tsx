@@ -24,11 +24,14 @@ describe('ExtensionPreservingFileName', () => {
     act(() => root.render(<ExtensionPreservingFileName name={name} />))
   }
 
-  it('separates only the final extension from a multi-dot filename', () => {
-    renderName('experiment.results.final.csv')
+  it('keeps the basename tail and final extension visible for a long filename', () => {
+    renderName('very_long_experiment_analysis_result_2025.csv')
 
-    expect(container.querySelector('[data-testid="file-name-prefix"]')?.textContent).toBe(
-      'experiment.results.final'
+    expect(container.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(
+      'very_long_experiment_analysis_'
+    )
+    expect(container.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(
+      'result_2025'
     )
     expect(container.querySelector('[data-testid="file-name-extension"]')?.textContent).toBe('.csv')
   })
@@ -36,7 +39,7 @@ describe('ExtensionPreservingFileName', () => {
   it.each(['README', '.env'])('truncates %s as one name without an extension suffix', (name) => {
     renderName(name)
 
-    expect(container.querySelector('[data-testid="file-name-prefix"]')?.textContent).toBe(name)
+    expect(container.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(name)
     expect(container.querySelector('[data-testid="file-name-extension"]')).toBeNull()
   })
 
@@ -46,12 +49,10 @@ describe('ExtensionPreservingFileName', () => {
     expect(container.textContent).toBe('note.md')
   })
 
-  it('reserves room for the prefix when an extension is unusually long', () => {
+  it('reserves room for the basename head when an extension is unusually long', () => {
     renderName('sample.verylongcustomextension')
 
-    expect(container.querySelector('[data-testid="file-name-prefix"]')?.className).toContain(
-      'flex-1'
-    )
+    expect(container.querySelector('[data-testid="file-name-head"]')?.className).toContain('flex-1')
     const extension = container.querySelector('[data-testid="file-name-extension"]')
     expect(extension?.className).toContain('max-w-[50%]')
     expect(extension?.className).toContain('text-ellipsis')

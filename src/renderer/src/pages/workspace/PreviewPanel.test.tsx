@@ -205,8 +205,11 @@ describe('PreviewPanel', () => {
     expect(tabBar?.className).toContain('min-w-0')
     expect(tabBar?.className).toContain('w-full')
     expect(tabBar?.querySelector('[role="tab"][aria-selected="true"]')).not.toBeNull()
-    expect(fileTab?.querySelector('[data-testid="file-name-prefix"]')?.textContent).toBe(
-      'global_climate_anomaly_analysis_1850-2025'
+    expect(fileTab?.querySelector('[data-testid="file-name-head"]')?.textContent).toBe(
+      'global_climate_anomaly_analysi'
+    )
+    expect(fileTab?.querySelector('[data-testid="file-name-tail"]')?.textContent).toBe(
+      's_1850-2025'
     )
     const tabExtension = fileTab?.querySelector('[data-testid="file-name-extension"]')
     expect(tabExtension?.textContent).toBe('.csv')
