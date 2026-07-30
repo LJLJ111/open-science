@@ -79,6 +79,32 @@ describe('preview workbench store', () => {
     })
   })
 
+  it('collapses the panel when the last preview item is removed', () => {
+    const store = usePreviewWorkbenchStore.getState()
+    const item = createProjectFilesPreviewItem()
+
+    store.upsertAndActivateItem(item)
+    store.removeItem(item.id)
+
+    expect(usePreviewWorkbenchStore.getState()).toMatchObject({
+      items: [],
+      activeItemId: undefined,
+      panelState: 'collapsed'
+    })
+  })
+
+  it('does not restore an open panel state when the restored preview list is empty', () => {
+    usePreviewWorkbenchStore.getState().activateProject('project-a', {
+      panelState: 'open',
+      items: []
+    })
+
+    expect(usePreviewWorkbenchStore.getState()).toMatchObject({
+      items: [],
+      panelState: 'collapsed'
+    })
+  })
+
   it('updates an existing item without duplicating it', () => {
     usePreviewWorkbenchStore.getState().upsertAndActivateItem({
       id: 'file:session-1:/workspace/project/report.md',
@@ -406,13 +432,11 @@ describe('preview workbench store', () => {
   })
 
   it('tracks manual panel state separately from preview item data', () => {
-    usePreviewWorkbenchStore.getState().openPanel()
-    usePreviewWorkbenchStore.getState().collapsePanel()
     usePreviewWorkbenchStore.getState().togglePanel()
 
     expect(usePreviewWorkbenchStore.getState()).toMatchObject({
-      panelState: 'open',
-      openRequestVersion: 2,
+      panelState: 'collapsed',
+      openRequestVersion: 0,
       items: []
     })
   })
