@@ -310,8 +310,14 @@ export const usePreviewWorkbenchStore = create<PreviewWorkbenchStore>((set, get)
 
       // New items append to the horizontal preview list in discovery order.
       if (existingIndex === -1) {
+        const hasActiveItem = state.items.some(
+          (previewItem) => previewItem.id === state.activeItemId
+        )
+
         return {
-          items: [...state.items, createStoredPreviewItem(scopedItem)]
+          items: [...state.items, createStoredPreviewItem(scopedItem)],
+          // Passive discovery selects a fallback tab without opening the collapsed panel.
+          activeItemId: hasActiveItem ? state.activeItemId : (state.items[0]?.id ?? scopedItem.id)
         }
       }
 

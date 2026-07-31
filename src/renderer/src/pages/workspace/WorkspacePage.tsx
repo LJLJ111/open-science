@@ -100,6 +100,7 @@ type AnimatedResizablePanelOptions = {
   requestVersion?: number
   onPanelStateChange: (state: ResizablePanelState) => void
   onPixelWidthChange?: (width: number) => void
+  collapseFocusTargetRef: React.RefObject<HTMLButtonElement | null>
 }
 
 // Shares the imperative animation lifecycle while each panel keeps ownership of its business state.
@@ -111,13 +112,16 @@ const useAnimatedResizablePanel = ({
   collapsedThreshold,
   requestVersion = 0,
   onPanelStateChange,
-  onPixelWidthChange
+  onPixelWidthChange,
+  collapseFocusTargetRef
 }: AnimatedResizablePanelOptions): {
   panelRef: React.RefObject<PanelImperativeHandle | null>
+  separatorRef: React.RefObject<HTMLDivElement | null>
   isAnimationMinSizeRelaxed: boolean
   syncPanelResize: (panelSize: PanelSize, previousPanelSize: PanelSize | undefined) => void
 } => {
   const panelRef = useRef<PanelImperativeHandle | null>(null)
+  const separatorRef = useRef<HTMLDivElement | null>(null)
   const animationRef = useRef<{ stop: () => void } | null>(null)
   const animationFrameRef = useRef<number | null>(null)
   const animationDirectionRef = useRef<PanelAnimationDirection | null>(null)
@@ -211,9 +215,14 @@ const useAnimatedResizablePanel = ({
         lastOpenSizeRef.current = panelSize.asPercentage
       }
 
+      // A keyboard collapse must not leave focus on the separator that is about to be hidden.
+      if (isNearCollapsedSize && document.activeElement === separatorRef.current) {
+        collapseFocusTargetRef.current?.focus()
+      }
+
       onPanelStateChange(isNearCollapsedSize ? 'collapsed' : 'open')
     },
-    [collapsedThreshold, onPanelStateChange, onPixelWidthChange]
+    [collapseFocusTargetRef, collapsedThreshold, onPanelStateChange, onPixelWidthChange]
   )
 
   // The first layout pass synchronizes restored state without introducing an entrance animation.
@@ -240,7 +249,7 @@ const useAnimatedResizablePanel = ({
     []
   )
 
-  return { panelRef, isAnimationMinSizeRelaxed, syncPanelResize }
+  return { panelRef, separatorRef, isAnimationMinSizeRelaxed, syncPanelResize }
 }
 
 // Mirrors the right preview toggle while staying outside the collapsible sidebar panel.
@@ -273,13 +282,16 @@ const SidebarPanelToggleButton = ({
 
 // The preview toggle lives outside the collapsible panel so it remains clickable at 0% width.
 const PreviewPanelToggleButton = ({
+  buttonRef,
   isCollapsed,
   onToggle
 }: {
+  buttonRef: React.RefObject<HTMLButtonElement | null>
   isCollapsed: boolean
   onToggle: () => void
 }): React.JSX.Element => (
   <button
+    ref={buttonRef}
     type="button"
     data-testid="workspace-preview-toggle"
     className={`absolute right-2 top-0 z-40 flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-lg ${
@@ -312,6 +324,7 @@ const WorkspacePage = ({
 }: WorkspacePageProps): React.JSX.Element => {
   const [sidebarPanelState, setSidebarPanelState] = useState<'open' | 'collapsed'>('open')
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null)
+  const previewToggleRef = useRef<HTMLButtonElement | null>(null)
   const syncSidebarTogglePosition = useCallback((panelWidth: number): void => {
     const toggle = sidebarToggleRef.current
     if (!toggle) return
@@ -320,6 +333,7 @@ const WorkspacePage = ({
   }, [])
   const {
     panelRef: sidebarPanelRef,
+    separatorRef: sidebarSeparatorRef,
     isAnimationMinSizeRelaxed: isSidebarPanelAnimationMinSizeRelaxed,
     syncPanelResize: syncSidebarPanelResize
   } = useAnimatedResizablePanel({
@@ -329,7 +343,8 @@ const WorkspacePage = ({
     collapsedSize: PANEL_COLLAPSED_SIZE,
     collapsedThreshold: PANEL_COLLAPSED_THRESHOLD,
     onPanelStateChange: setSidebarPanelState,
-    onPixelWidthChange: syncSidebarTogglePosition
+    onPixelWidthChange: syncSidebarTogglePosition,
+    collapseFocusTargetRef: sidebarToggleRef
   })
 
   // The active project scopes which sessions are visible and stamps newly created ones. The workspace
@@ -384,6 +399,7 @@ const WorkspacePage = ({
   const syncPreviewPanelState = usePreviewWorkbenchStore((state) => state.syncPanelState)
   const {
     panelRef: previewPanelRef,
+    separatorRef: previewSeparatorRef,
     isAnimationMinSizeRelaxed: isPreviewPanelAnimationMinSizeRelaxed,
     syncPanelResize: syncPreviewPanelResize
   } = useAnimatedResizablePanel({
@@ -393,7 +409,8 @@ const WorkspacePage = ({
     collapsedSize: PANEL_COLLAPSED_SIZE,
     collapsedThreshold: PANEL_COLLAPSED_THRESHOLD,
     requestVersion: previewOpenRequestVersion,
-    onPanelStateChange: syncPreviewPanelState
+    onPanelStateChange: syncPreviewPanelState,
+    collapseFocusTargetRef: previewToggleRef
   })
   const {
     actionError,
@@ -1606,6 +1623,7 @@ const WorkspacePage = ({
           </ResizablePanel>
 
           <ResizableHandle
+            elementRef={sidebarSeparatorRef}
             aria-label="Resize left panel"
             disabled={sidebarPanelState === 'collapsed'}
             aria-hidden={sidebarPanelState === 'collapsed'}
@@ -1731,6 +1749,7 @@ const WorkspacePage = ({
           />
 
           <ResizableHandle
+            elementRef={previewSeparatorRef}
             aria-label="Resize right panel"
             disabled={previewPanelState === 'collapsed'}
             aria-hidden={previewPanelState === 'collapsed'}
@@ -1752,6 +1771,7 @@ const WorkspacePage = ({
         </ResizablePanelGroup>
         {previewItems.length > 0 ? (
           <PreviewPanelToggleButton
+            buttonRef={previewToggleRef}
             isCollapsed={previewPanelState === 'collapsed'}
             onToggle={togglePreviewPanel}
           />

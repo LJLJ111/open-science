@@ -39,7 +39,7 @@ function ResizableHandle({
         'relative flex w-px items-center justify-center bg-transparent outline-none',
         "after:absolute after:inset-y-0 after:left-1/2 after:w-3 after:-translate-x-1/2 after:content-['']",
         'before:pointer-events-none before:absolute before:top-1/2 before:left-1/2 before:z-10 before:h-8 before:w-0.5 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-text-300 before:opacity-0',
-        'hover:before:opacity-60 data-[separator=active]:before:opacity-60',
+        'hover:before:opacity-60 focus-visible:before:opacity-60 data-[separator=active]:before:opacity-60',
         className
       )}
       {...props}

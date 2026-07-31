@@ -136,6 +136,26 @@ describe('preview workbench store', () => {
     })
   })
 
+  it('selects the first passively discovered preview without opening the panel', () => {
+    const notebookItem = createNotebookPreviewItem({
+      sessionId: 'session-1',
+      projectName: 'default-project',
+      workspaceCwd: '/workspace',
+      notebookSessionRoot: '/notebooks/session-1',
+      dataRoot: '/notebooks/session-1/data',
+      runtimeRoot: '/runtime',
+      runJsonPath: '/notebooks/session-1/run.json'
+    })
+
+    usePreviewWorkbenchStore.getState().upsertItem(notebookItem)
+
+    expect(usePreviewWorkbenchStore.getState()).toMatchObject({
+      activeItemId: notebookItem.id,
+      panelState: 'collapsed',
+      openRequestVersion: 0
+    })
+  })
+
   it('reconciles finalized upload paths across project slices without opening new tabs', () => {
     const store = usePreviewWorkbenchStore.getState()
 

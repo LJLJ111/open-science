@@ -115,10 +115,19 @@ vi.mock('@/components/ui/resizable', () => ({
     <div>{children}</div>
   ),
   ResizableHandle: ({
+    elementRef,
     className,
     ...props
-  }: React.HTMLAttributes<HTMLDivElement>): React.JSX.Element => (
-    <div data-testid="resize-handle" className={className} {...props} />
+  }: React.HTMLAttributes<HTMLDivElement> & {
+    elementRef?: React.Ref<HTMLDivElement>
+  }): React.JSX.Element => (
+    <div
+      ref={elementRef}
+      data-testid="resize-handle"
+      tabIndex={0}
+      className={className}
+      {...props}
+    />
   )
 }))
 
@@ -616,6 +625,40 @@ describe('WorkspacePage preview panel resize sync', () => {
     })
 
     expect(toggleButton.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('moves keyboard focus from a collapsed sidebar separator to its toggle', async () => {
+    await renderPage()
+
+    const leftHandle = container.querySelector<HTMLElement>('[aria-label="Resize left panel"]')
+    const toggleButton = getSidebarToggle()
+    leftHandle?.focus()
+
+    await act(async () => {
+      workspacePageHarness.sidebarOnResize?.({ asPercentage: 0, inPixels: 0 }, 'left-panel', {
+        asPercentage: 16,
+        inPixels: 160
+      })
+    })
+
+    expect(document.activeElement).toBe(toggleButton)
+  })
+
+  it('moves keyboard focus from a collapsed preview separator to its toggle', async () => {
+    await renderPage()
+
+    const rightHandle = container.querySelector<HTMLElement>('[aria-label="Resize right panel"]')
+    const toggleButton = getPreviewToggle()
+    rightHandle?.focus()
+
+    await act(async () => {
+      workspacePageHarness.previewOnResize?.(
+        { asPercentage: 0, inPixels: 0 },
+        { asPercentage: 30, inPixels: 300 }
+      )
+    })
+
+    expect(document.activeElement).toBe(toggleButton)
   })
 
   it('lets an opposite sidebar drag interrupt a closing animation', async () => {
