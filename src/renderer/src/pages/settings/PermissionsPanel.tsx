@@ -11,6 +11,7 @@ import type {
 } from '../../../../shared/permission-grants'
 import { Button } from '@/components/ui/button'
 import {
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -445,7 +446,7 @@ const PermissionsPanel = ({
             </div>
             <div className={dialogFooterClassName}>
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
                   Cancel
                 </Button>
               </AlertDialog.Cancel>

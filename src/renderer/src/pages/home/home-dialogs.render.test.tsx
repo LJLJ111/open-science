@@ -302,8 +302,7 @@ describe('home dialogs shared chrome', () => {
     const elements = collectElements(tree)
     const closeButton = elements.find((element) => element.props['aria-label'] === 'Close')
     const cancelButton = elements.find(
-      (element) =>
-        getTextContent(element).trim() === 'Cancel' && element.props.variant === 'outline'
+      (element) => getTextContent(element).trim() === 'Cancel' && element.props.disabled
     )
     const deleteButton = elements.find(
       (element) =>
@@ -312,6 +311,9 @@ describe('home dialogs shared chrome', () => {
     )
 
     expect(closeButton?.props.disabled).toBe(true)
+    expect(cancelButton?.props.variant).toBe('ghost')
+    expect(cancelButton?.props.className).toContain('border-0')
+    expect(cancelButton?.props.className).toContain('shadow-none')
     expect(cancelButton?.props.disabled).toBe(true)
     expect(deleteButton?.props.disabled).toBe(true)
   })

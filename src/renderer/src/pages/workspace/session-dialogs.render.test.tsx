@@ -100,6 +100,7 @@ describe('workspace session dialogs behavior wiring', () => {
     expect(header?.props.className).toContain('px-5 py-3.5')
     expect(footer?.props.className).toContain('px-5 py-3.5')
     expect(footer?.props.className).toContain('gap-3')
+    expect(footer?.props.className).toContain('[&_button:enabled]:cursor-pointer')
     expect(title).toBeDefined()
     expect(body).toBeDefined()
 
@@ -151,6 +152,8 @@ describe('workspace session dialogs behavior wiring', () => {
     expect(cancelButton?.props.onClick).toBeTypeOf('function')
     expect(cancelButton?.props.variant).toBe('ghost')
     expect(cancelButton?.props.className).toContain('cursor-pointer')
+    expect(cancelButton?.props.className).toContain('border-0')
+    expect(cancelButton?.props.className).toContain('shadow-none')
     expect(cancelButton?.props.className).toContain('hover:bg-bg-200')
     ;(cancelButton?.props.onClick as () => void)()
     expect(onCancel).toHaveBeenCalledTimes(2)

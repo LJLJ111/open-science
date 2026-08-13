@@ -10,6 +10,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
   dialogHeaderClassName,
@@ -207,7 +208,8 @@ const SkillImportApprovalRequestDialog = ({
             <div className={dialogFooterClassName}>
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
+                className={dialogCancelButtonClassName}
                 onClick={() => void respond({ id: request.id, cancelled: true })}
               >
                 Cancel

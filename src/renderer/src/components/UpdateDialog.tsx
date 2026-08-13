@@ -7,6 +7,7 @@ import { AgentMarkdown } from '@/components/streamdown/AgentMarkdown'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -139,7 +140,10 @@ const UpdateDialog = ({ active = true }: { active?: boolean }): React.JSX.Elemen
                 type="button"
                 onClick={() => closeDialog()}
                 disabled={isApplying}
-                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-bg-300"
+                className={cn(
+                  dialogCancelButtonClassName,
+                  'rounded-lg px-3 py-1.5 text-sm font-medium text-foreground transition-colors'
+                )}
               >
                 {isReady ? 'Close' : 'Cancel'}
               </button>

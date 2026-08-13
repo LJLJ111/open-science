@@ -4,6 +4,7 @@ import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -75,7 +76,7 @@ const RepairFrameworkDialog = ({
 
         <div className={dialogFooterClassName}>
           <AlertDialog.Cancel asChild>
-            <Button type="button" variant="outline">
+            <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
               Cancel
             </Button>
           </AlertDialog.Cancel>

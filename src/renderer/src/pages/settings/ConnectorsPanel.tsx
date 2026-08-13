@@ -22,6 +22,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -694,7 +695,12 @@ export function ConnectorsPanel({ onNavigate }: ConnectorsPanelProps): React.JSX
 
             <div className={dialogFooterClassName}>
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="outline" disabled={removing}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className={dialogCancelButtonClassName}
+                  disabled={removing}
+                >
                   Cancel
                 </Button>
               </AlertDialog.Cancel>

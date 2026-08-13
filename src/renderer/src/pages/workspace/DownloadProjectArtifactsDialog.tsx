@@ -4,6 +4,7 @@ import { Dialog } from 'radix-ui'
 
 import { Button } from '@/components/ui/button'
 import {
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogOverlayClassName,
   dialogPanelClassName
@@ -322,7 +323,8 @@ const DownloadProjectArtifactsDialog = ({
               ) : null}
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
+                className={dialogCancelButtonClassName}
                 size="sm"
                 disabled={isDownloading}
                 onClick={onClose}

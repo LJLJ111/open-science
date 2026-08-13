@@ -4,6 +4,7 @@ import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -21,9 +22,6 @@ type UninstallRuntimeDialogProps = {
   onCancel: () => void
   onConfirm: () => void
 }
-
-const cancelButtonClassName =
-  'border-border-200 bg-bg-000 text-text-000 hover:bg-bg-200 hover:text-text-000'
 
 const confirmButtonClassName =
   'border-transparent bg-danger-000 text-white hover:bg-danger-000/90 hover:text-white'
@@ -90,8 +88,8 @@ const UninstallRuntimeDialog = ({
             <AlertDialog.Cancel asChild>
               <Button
                 type="button"
-                variant="outline"
-                className={cancelButtonClassName}
+                variant="ghost"
+                className={dialogCancelButtonClassName}
                 disabled={dialogIsUninstalling}
               >
                 Cancel

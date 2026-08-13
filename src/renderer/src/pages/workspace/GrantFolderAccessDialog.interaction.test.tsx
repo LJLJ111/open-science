@@ -160,6 +160,9 @@ describe('GrantFolderAccessDialog', () => {
       '[data-testid="grant-access-grant"]'
     )
     expect(grantButton?.disabled).toBe(true)
+    expect(grantButton?.className).toContain('bg-primary')
+    expect(grantButton?.className).toContain('text-primary-foreground')
+    expect(grantButton?.className).toContain('disabled:opacity-40')
   })
 
   it('shows "Directory could not be accessed." when the grant is rejected', async () => {
@@ -187,6 +190,12 @@ describe('GrantFolderAccessDialog', () => {
     await flush()
 
     await click(document.body.querySelector('[data-testid="grant-access-folder-Projects"]'))
+    const grantButton = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="grant-access-grant"]'
+    )
+    expect(grantButton?.disabled).toBe(false)
+    expect(grantButton?.className).toContain('bg-primary')
+    expect(grantButton?.className).toContain('hover:bg-primary/80')
     // Switch to read & write before granting.
     await click(document.body.querySelector('[role="radio"][aria-checked="false"]'))
     await click(document.body.querySelector('[data-testid="grant-access-grant"]'))

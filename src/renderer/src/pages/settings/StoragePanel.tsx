@@ -13,6 +13,7 @@ import { useRef, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -588,7 +589,7 @@ const StoragePanel = ({ onContinueToAgent }: StoragePanelProps): React.JSX.Eleme
 
             <div className={dialogFooterClassName}>
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
                   Cancel
                 </Button>
               </AlertDialog.Cancel>
@@ -649,7 +650,7 @@ const StoragePanel = ({ onContinueToAgent }: StoragePanelProps): React.JSX.Eleme
 
             <div className={dialogFooterClassName}>
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
                   Cancel
                 </Button>
               </AlertDialog.Cancel>

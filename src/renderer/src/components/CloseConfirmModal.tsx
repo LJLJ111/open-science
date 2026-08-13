@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
   dialogHeaderClassName,
@@ -156,7 +157,7 @@ export const CloseConfirmModal = ({
               </AlertDialog.Cancel>
             ) : isQuitVariant ? (
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="ghost">
+                <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
                   Cancel
                 </Button>
               </AlertDialog.Cancel>

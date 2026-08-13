@@ -281,7 +281,9 @@ describe('ComposerAgentControlsMenu', () => {
     expect(onProfileChange).not.toHaveBeenCalled()
     expect(container.textContent).toContain('Enable Full access?')
     expect(findButton('Cancel').getAttribute('data-slot')).toBe('button')
-    expect(findButton('Cancel').getAttribute('data-variant')).toBe('outline')
+    expect(findButton('Cancel').getAttribute('data-variant')).toBe('ghost')
+    expect(findButton('Cancel').className).toContain('border-0')
+    expect(findButton('Cancel').className).toContain('shadow-none')
     expect(findButton('Enable').getAttribute('data-slot')).toBe('button')
     expect(findButton('Enable').className).toContain('bg-amber-600')
 
@@ -298,6 +300,11 @@ describe('ComposerAgentControlsMenu', () => {
     expect(dialog?.className).toContain('shadow-dialog')
     expect(dialog?.className).toContain('data-[state=open]:zoom-in-95')
     expect(dialog?.querySelector('[aria-label="Close"]')).not.toBeNull()
+    const title = dialog?.querySelector('h2')
+    const description = dialog?.querySelector('p')
+    expect(title?.parentElement?.parentElement?.className).toContain('border-b')
+    expect(title?.parentElement?.parentElement?.contains(description ?? null)).toBe(false)
+    expect(description?.parentElement?.className).toContain('p-5')
 
     act(() => findButton('Enable').click())
     expect(onProfileChange).toHaveBeenCalledWith('full')

@@ -21,6 +21,7 @@ import {
 } from '../../../../shared/local-fs'
 import { Button } from '@/components/ui/button'
 import {
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogFooterClassName,
   dialogHeaderClassName,
@@ -343,7 +344,8 @@ const GrantFolderAccessDialogContent = ({
             <span className="flex-1" />
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
+              className={dialogCancelButtonClassName}
               data-testid="grant-access-cancel"
               onClick={() => onOpenChange(false)}
             >
@@ -354,7 +356,7 @@ const GrantFolderAccessDialogContent = ({
               data-testid="grant-access-grant"
               disabled={isHome}
               onClick={() => void handleGrant()}
-              className="bg-text-000 text-bg-000 hover:bg-text-000/85"
+              className="bg-primary text-primary-foreground hover:bg-primary/80 disabled:bg-primary disabled:text-primary-foreground disabled:opacity-40"
             >
               Grant this folder
             </Button>

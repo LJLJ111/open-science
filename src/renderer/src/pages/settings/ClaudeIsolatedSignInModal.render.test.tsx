@@ -105,6 +105,8 @@ describe('ClaudeIsolatedSignInModal UI state', () => {
     expectDialogFormFieldClassName(findInput('Claude setup token')?.className)
     expect(findButton('Cancel')?.dataset.variant).toBe('ghost')
     expect(findButton('Cancel')?.className).toContain('cursor-pointer')
+    expect(findButton('Cancel')?.className).toContain('border-0')
+    expect(findButton('Cancel')?.className).toContain('shadow-none')
     expect(findButton('Cancel')?.className).toContain('hover:bg-bg-200')
     expect(findButton('Sign in')).toBeDefined()
   })

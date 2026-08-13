@@ -14,14 +14,16 @@ const dialogHeaderClassName =
 const dialogBodyClassName = 'p-5'
 const dialogTitleClassName = 'text-lg font-semibold text-text-000'
 const dialogDescriptionClassName = 'mt-1 text-sm leading-relaxed text-muted-foreground'
-const dialogFooterClassName = 'flex justify-end gap-3 border-t border-border-300/90 px-5 py-3.5'
+const dialogFooterClassName =
+  'flex justify-end gap-3 border-t border-border-300/90 px-5 py-3.5 [&_button:enabled]:cursor-pointer'
 const dialogCloseButtonClassName = 'cursor-pointer rounded-lg text-muted-foreground'
 const dialogFormLabelClassName = 'block text-sm font-medium text-foreground mb-1'
 const dialogFormHelpClassName = 'text-xs leading-relaxed text-foreground/90 mb-2'
 const dialogFormInputClassName =
   'rounded-lg border border-border-100 bg-bg-000 text-foreground shadow-none placeholder:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25'
 const dialogFormTextareaClassName = `${dialogFormInputClassName} w-full resize-none px-3 py-2 text-sm outline-none`
-const dialogCancelButtonClassName = 'cursor-pointer hover:bg-bg-200'
+const dialogCancelButtonClassName =
+  'cursor-pointer border-0 shadow-none hover:bg-bg-200 hover:text-foreground'
 
 export {
   dialogBodyClassName,

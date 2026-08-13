@@ -36,6 +36,8 @@ import { SpecialistSubmenu } from './SpecialistSubmenu'
 
 import { Button } from '@/components/ui/button'
 import {
+  dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -564,20 +566,13 @@ const ComposerAgentControlsMenu = ({
             )}
           >
             <div className={dialogHeaderClassName}>
-              <div className="flex min-w-0 items-start gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                   <AlertTriangle className="size-5" strokeWidth={2} aria-hidden="true" />
                 </span>
-                <div className="min-w-0">
-                  <AlertDialog.Title className={dialogTitleClassName}>
-                    Enable Full access?
-                  </AlertDialog.Title>
-                  <AlertDialog.Description className={dialogDescriptionClassName}>
-                    The agent can run commands, change files, execute notebook code, and make
-                    network requests without asking first. Authentication failures and execution
-                    errors can still stop the run.
-                  </AlertDialog.Description>
-                </div>
+                <AlertDialog.Title className={dialogTitleClassName}>
+                  Enable Full access?
+                </AlertDialog.Title>
               </div>
               <AlertDialog.Cancel asChild>
                 <Button
@@ -591,13 +586,16 @@ const ComposerAgentControlsMenu = ({
                 </Button>
               </AlertDialog.Cancel>
             </div>
+            <div className={dialogBodyClassName}>
+              <AlertDialog.Description className={dialogDescriptionClassName}>
+                The agent can run commands, change files, execute notebook code, and make network
+                requests without asking first. Authentication failures and execution errors can
+                still stop the run.
+              </AlertDialog.Description>
+            </div>
             <div className={dialogFooterClassName}>
               <AlertDialog.Cancel asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-border-200 bg-bg-000 text-text-000 hover:bg-bg-200 hover:text-text-000"
-                >
+                <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
                   Cancel
                 </Button>
               </AlertDialog.Cancel>

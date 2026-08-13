@@ -4,6 +4,7 @@ import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -20,8 +21,6 @@ type EditMessageConfirmDialogProps = {
   onConfirm: () => void
 }
 
-const cancelButtonClassName =
-  'border-border-200 bg-bg-000 text-text-000 hover:bg-bg-200 hover:text-text-000'
 const confirmButtonClassName =
   'border-transparent bg-amber-500 text-white hover:bg-amber-500/90 hover:text-white'
 
@@ -70,7 +69,7 @@ const EditMessageConfirmDialog = ({
 
         <div className={dialogFooterClassName}>
           <AlertDialog.Cancel asChild>
-            <Button type="button" variant="outline" className={cancelButtonClassName}>
+            <Button type="button" variant="ghost" className={dialogCancelButtonClassName}>
               Cancel
             </Button>
           </AlertDialog.Cancel>

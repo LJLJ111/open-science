@@ -4,6 +4,7 @@ import { AlertDialog } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import {
   dialogBodyClassName,
+  dialogCancelButtonClassName,
   dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
@@ -88,7 +89,12 @@ const PermissionScopeConfirmationDialog = ({
 
           <div className={dialogFooterClassName}>
             <AlertDialog.Cancel asChild>
-              <Button type="button" variant="outline" data-testid="permission-scope-cancel">
+              <Button
+                type="button"
+                variant="ghost"
+                className={dialogCancelButtonClassName}
+                data-testid="permission-scope-cancel"
+              >
                 Cancel
               </Button>
             </AlertDialog.Cancel>
