@@ -1,9 +1,13 @@
+import { X } from 'lucide-react'
 import { AlertDialog } from 'radix-ui'
 
 import { Button } from '@/components/ui/button'
 import {
+  dialogBodyClassName,
+  dialogCloseButtonClassName,
   dialogDescriptionClassName,
   dialogFooterClassName,
+  dialogHeaderClassName,
   dialogOverlayClassName,
   dialogPanelClassName,
   dialogTitleClassName
@@ -51,16 +55,37 @@ const PermissionScopeConfirmationDialog = ({
       <AlertDialog.Portal>
         <AlertDialog.Overlay className={`${dialogOverlayClassName} z-[70]`} />
         <AlertDialog.Content
-          className={dialogPanelClassName('z-[70] w-[min(420px,calc(100vw-2rem))]')}
+          className={dialogPanelClassName('z-[70] w-[min(420px,calc(100vw-2rem))] p-0')}
           data-testid="permission-scope-confirmation"
         >
-          <AlertDialog.Title className={`${dialogTitleClassName} min-w-0 [overflow-wrap:anywhere]`}>
-            Allow {subject} {scopePhrase}?
-          </AlertDialog.Title>
-          <AlertDialog.Description className={dialogDescriptionClassName}>
-            {effect} You can revoke it in{' '}
-            <strong className="font-semibold text-foreground">Settings → Permissions</strong>.
-          </AlertDialog.Description>
+          <div className={dialogHeaderClassName}>
+            <div className="min-w-0">
+              <AlertDialog.Title
+                className={`${dialogTitleClassName} min-w-0 [overflow-wrap:anywhere]`}
+              >
+                Allow {subject} {scopePhrase}?
+              </AlertDialog.Title>
+            </div>
+            <AlertDialog.Cancel asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close"
+                className={dialogCloseButtonClassName}
+              >
+                <X className="size-4" aria-hidden="true" />
+              </Button>
+            </AlertDialog.Cancel>
+          </div>
+
+          <div className={dialogBodyClassName}>
+            <AlertDialog.Description className={dialogDescriptionClassName}>
+              {effect} You can revoke it in{' '}
+              <strong className="font-semibold text-foreground">Settings → Permissions</strong>.
+            </AlertDialog.Description>
+          </div>
+
           <div className={dialogFooterClassName}>
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" data-testid="permission-scope-cancel">

@@ -323,6 +323,18 @@ describe('ConnectorsPanel (groups)', () => {
     expect(document.body.textContent).toContain('This Connector is used by 2 Specialists')
     expect(document.body.textContent).toContain('Selected by ID')
     expect(document.body.textContent).toContain('Full access')
+    const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')
+    expect(dialog?.className).toContain('p-0')
+    expect(
+      Array.from(dialog?.querySelectorAll<HTMLElement>('div') ?? []).some((element) =>
+        element.className.includes('border-b border-border-300/90')
+      )
+    ).toBe(true)
+    expect(
+      Array.from(dialog?.querySelectorAll<HTMLElement>('div') ?? []).some((element) =>
+        element.className.includes('border-t border-border-300/90')
+      )
+    ).toBe(true)
 
     const confirm = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(
       (button) => button.textContent === 'Remove Connector'

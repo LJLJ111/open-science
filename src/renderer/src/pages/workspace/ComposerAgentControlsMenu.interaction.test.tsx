@@ -294,6 +294,7 @@ describe('ComposerAgentControlsMenu', () => {
     expect(dialog?.className).toContain('rounded-xl')
     expect(dialog?.className).toContain('border-border')
     expect(dialog?.className).toContain('bg-card')
+    expect(dialog?.className).toContain('p-0')
     expect(dialog?.className).toContain('shadow-dialog')
     expect(dialog?.className).toContain('data-[state=open]:zoom-in-95')
     expect(dialog?.querySelector('[aria-label="Close"]')).not.toBeNull()

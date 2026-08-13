@@ -93,6 +93,28 @@ const crumb = (label: string): Element | undefined =>
   )
 
 describe('GrantFolderAccessDialog', () => {
+  it('uses the shared dialog header, close action, and divider treatment', async () => {
+    const onOpenChange = vi.fn()
+    act(() => {
+      root.render(<GrantFolderAccessDialog open onOpenChange={onOpenChange} />)
+    })
+    await flush()
+
+    const title = document.body.querySelector('[role="dialog"] h2')
+    expect(title?.className).toContain('text-lg font-semibold text-text-000')
+    expect(title?.parentElement?.className).toContain('border-b border-border-300/90 px-5 py-3.5')
+
+    const closeButton = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="grant-access-close"]'
+    )
+    expect(closeButton?.className).toContain('cursor-pointer')
+    await click(closeButton)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+
+    const footer = document.body.querySelector('[data-testid="grant-access-footer"]')
+    expect(footer?.className).toContain('border-t border-border-300/90 px-5 py-3.5')
+  })
+
   it('lists the home subfolders on open', async () => {
     renderDialog()
     await flush()

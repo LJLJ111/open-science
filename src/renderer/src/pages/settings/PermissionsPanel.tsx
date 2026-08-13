@@ -413,7 +413,7 @@ const PermissionsPanel = ({
           <AlertDialog.Overlay className={cn(dialogOverlayClassName, 'z-[60]')} />
           <AlertDialog.Content
             className={dialogPanelClassName(
-              'z-[60] w-[min(440px,calc(100vw-2rem))] overscroll-contain'
+              'z-[60] w-[min(440px,calc(100vw-2rem))] overscroll-contain p-0'
             )}
           >
             <div className={dialogHeaderClassName}>

@@ -559,7 +559,9 @@ const ComposerAgentControlsMenu = ({
         <AlertDialog.Portal>
           <AlertDialog.Overlay className={dialogOverlayClassName} />
           <AlertDialog.Content
-            className={dialogPanelClassName('w-[min(440px,calc(100vw-2rem))] overscroll-contain')}
+            className={dialogPanelClassName(
+              'w-[min(440px,calc(100vw-2rem))] overscroll-contain p-0'
+            )}
           >
             <div className={dialogHeaderClassName}>
               <div className="flex min-w-0 items-start gap-3">
