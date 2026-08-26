@@ -278,12 +278,16 @@ const WorkspaceElicitationCard = ({
     })
   }
 
-  const summaryHeader = (
+  // Terminal cards put their status (skipped/cancelled) on the title line, right after the icon.
+  const summaryHeader = (statusPrefix?: string): React.JSX.Element => (
     <div className="flex items-center gap-2">
       <span className="grid size-[22px] shrink-0 place-items-center text-primary">
         <CircleHelp className="size-3.5" strokeWidth={2} aria-hidden="true" />
       </span>
       <h3 className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm font-semibold leading-5">
+        {statusPrefix ? (
+          <span className="text-xs font-normal text-text-300">{`${statusPrefix} · `}</span>
+        ) : null}
         {summaryTitle}
         {choiceQuestions && choiceQuestions.length > 1 ? (
           <span className="font-normal text-text-300">
@@ -945,7 +949,7 @@ const WorkspaceElicitationCard = ({
         </form>
       ) : answers.length > 0 ? (
         <div data-testid="elicitation-answer-summary">
-          {summaryHeader}
+          {summaryHeader()}
           <div className="mt-1.5 flex flex-col">
             {answers.map((answer) => {
               const field = fieldsById.get(answer.fieldId)
@@ -1014,8 +1018,7 @@ const WorkspaceElicitationCard = ({
           // Terminal choice cards share the summary surface: same header, one expandable row
           // per question so the original prompt stays reviewable.
           <div data-testid="elicitation-answer-summary">
-            {summaryHeader}
-            <p className="mt-1 text-xs leading-4 text-text-300">{terminalLabel}</p>
+            {summaryHeader(terminalLabel)}
             <div className="mt-1.5 flex flex-col">
               {choiceQuestions.map((question, questionIndex) => {
                 const expanded = expandedQuestions.has(questionIndex)

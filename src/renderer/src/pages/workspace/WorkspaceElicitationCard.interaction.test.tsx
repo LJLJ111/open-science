@@ -568,7 +568,13 @@ describe('WorkspaceElicitationCard choice question', () => {
     expect(summary?.querySelector('svg.lucide-circle-question-mark')).not.toBeNull()
     expect(summary?.textContent).toContain('What should this skill primarily cover?')
     expect(summary?.textContent).toContain('2 questions')
-    expect(summary?.textContent).toContain('Skipped')
+    // The status sits on the title line itself, right after the icon, ahead of the title.
+    const headerText = summary?.querySelector('h3')?.textContent ?? ''
+    expect(headerText).toContain('Skipped')
+    expect(headerText.indexOf('Skipped')).toBeLessThan(
+      headerText.indexOf('What should this skill primarily cover?')
+    )
+    expect(summary?.querySelector('p')).toBeNull()
 
     const rows = Array.from(
       container.querySelectorAll<HTMLButtonElement>('[data-testid="elicitation-answer-row"]')
