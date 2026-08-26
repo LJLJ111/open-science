@@ -376,7 +376,7 @@ const WorkspaceElicitationCard = ({
                 <Bot className="size-3" strokeWidth={1.75} aria-hidden="true" />
               )}
             </span>
-            <span>{t('Let the agent decide')}</span>
+            <span className="min-w-0 flex-1">{t('Let the agent decide')}</span>
           </div>
           {questionCustomSelected ? (
             <div
@@ -617,7 +617,7 @@ const WorkspaceElicitationCard = ({
               aria-pressed={agentDecidesSelected}
               disabled={isSubmitting}
               className={cn(
-                'relative flex w-full cursor-pointer items-start gap-2 rounded-xl bg-bg-000 px-2 py-1.5 text-left text-[13px] font-medium hover:bg-bg-200 active:bg-bg-200 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
+                'relative flex w-full cursor-pointer items-center gap-2 rounded-xl bg-bg-000 px-2 py-1.5 text-left text-[13px] font-medium hover:bg-bg-200 active:bg-bg-200 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
                 agentDecidesSelected && 'bg-primary/10 hover:bg-primary/15'
               )}
               onClick={() =>
@@ -629,7 +629,7 @@ const WorkspaceElicitationCard = ({
             >
               <span
                 className={cn(
-                  'mt-px grid size-6 shrink-0 place-items-center rounded-md',
+                  'grid size-6 shrink-0 place-items-center rounded-md',
                   agentDecidesSelected
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-bg-100 text-text-100'
@@ -641,11 +641,11 @@ const WorkspaceElicitationCard = ({
                   <Bot className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                 )}
               </span>
-              <span>{t('Let the agent decide')}</span>
+              <span className="min-w-0 flex-1">{t('Let the agent decide')}</span>
             </button>
           </div>
 
-          <div className="mt-1.5 flex items-start gap-2 border-b border-border-200 px-2 py-1.5">
+          <div className="mt-1.5 flex items-start gap-2 px-2 py-1.5">
             <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-bg-100 text-text-100">
               <Pencil className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
             </span>
@@ -660,7 +660,7 @@ const WorkspaceElicitationCard = ({
                 choiceQuestion.customField.maxLength ?? MAX_ELICITATION_MESSAGE_CHARS,
                 MAX_ELICITATION_MESSAGE_CHARS
               )}
-              className="max-h-40 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto rounded-none border-0 bg-transparent px-0 py-1.5 shadow-none focus-visible:border-transparent focus-visible:ring-0"
+              className="max-h-40 min-h-7 min-w-0 flex-1 resize-none overflow-y-auto rounded-none border-0 border-b border-border-200 bg-transparent px-0 pb-0.5 pt-1.5 shadow-none focus-visible:ring-0"
               onChange={(event) => {
                 const value = event.currentTarget.value
                 setValues((current) => ({

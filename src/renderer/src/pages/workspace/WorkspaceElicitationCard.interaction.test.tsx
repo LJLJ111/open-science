@@ -639,11 +639,12 @@ describe('WorkspaceElicitationCard choice question', () => {
     )
     expect(skipAfter?.parentElement?.lastElementChild).toBe(skipAfter)
     expect(skipAfter?.parentElement?.parentElement?.textContent).toContain('selected')
-    // The separator moved below the custom-answer input, not above it.
+    // The full-width separator is gone; the input carries its own underline instead.
     const customRow = container.querySelector('textarea')?.closest('div')
     expect(customRow?.textContent).not.toContain('Skip')
     expect(customRow?.classList.contains('border-t')).toBe(false)
-    expect(customRow?.className).toContain('border-b')
+    expect(customRow?.classList.contains('border-b')).toBe(false)
+    expect(container.querySelector('textarea')?.className).toContain('border-b')
 
     await act(async () => skip?.click())
     expect(onRespond).toHaveBeenCalledWith({
@@ -915,6 +916,11 @@ describe('WorkspaceElicitationCard choice question', () => {
     })
     expect(customInput?.style.height).toBe('96px')
     expect(customInput?.className).toContain('focus-visible:ring-0')
+    // Tighter gap between the input text and its underline.
+    expect(customInput?.className).toContain('pb-0.5')
+    expect(customInput?.className).not.toContain('py-1.5')
+    // The 36px min-height padded the gap below a single line — keep the box snug.
+    expect(customInput?.className).toContain('min-h-7')
     expect(customInput?.closest('div')?.className).toContain('items-start')
     expect(customInput?.closest('div')?.className).toContain('gap-2')
     expect(customInput?.closest('div')?.firstElementChild?.className).toContain('mt-0.5')
@@ -937,7 +943,11 @@ describe('WorkspaceElicitationCard choice question', () => {
     )
     expect(agentDecides?.className).toContain('hover:bg-bg-200')
     expect(agentDecides?.className).toContain('cursor-pointer')
-    expect(agentDecides?.firstElementChild?.className).toContain('mt-px')
+    // Single-line row: icon and label center-aligned, not top-aligned.
+    expect(agentDecides?.className).toContain('items-center')
+    expect(agentDecides?.firstElementChild?.className).not.toContain('mt-px')
+    // The label column stretches like the option rows' flex-1 content column.
+    expect(agentDecides?.lastElementChild?.className).toContain('flex-1')
     await act(async () => agentDecides?.click())
     expect(agentDecides?.getAttribute('aria-pressed')).toBe('true')
     expect(onRespond).not.toHaveBeenCalled()
