@@ -12,6 +12,7 @@ import type { ProjectFilesHandlers } from './project-files/ipc'
 import type { ProjectHandlers } from './projects/ipc'
 import type { SessionPersistenceHandlers } from './session-persistence/ipc'
 import type { ManagedPreviewOwnerRegistry } from './managed-preview-ipc'
+import { canMutateSessionDelegationPolicy } from './caller-context'
 
 import {
   ApplicationCommandError,
@@ -19,7 +20,10 @@ import {
 } from '../shared/application-command-contract'
 import * as Artifacts from '../shared/artifacts'
 import type * as ConversationExport from '../shared/conversation-export'
-import { LIFECYCLE_CHANNELS } from '../shared/lifecycle-events'
+import {
+  LIFECYCLE_CHANNELS,
+  MAIN_DELEGATION_POLICY_LIFECYCLE_CLIENT_ID
+} from '../shared/lifecycle-events'
 import type * as PreviewResources from '../shared/preview-resources'
 import type * as PreviewState from '../shared/preview-state'
 import * as Projects from '../shared/projects'
@@ -262,6 +266,16 @@ const dataContentApplicationCommands = Object.freeze({
     'list',
     Projects.projectApplicationCommandContracts.list
   ),
+  projectListDeletionCleanup: projectCommand(
+    'projects:list-deletion-cleanup',
+    'listDeletionCleanup',
+    Projects.projectApplicationCommandContracts.listDeletionCleanup
+  ),
+  projectRetryDeletionCleanup: projectCommand(
+    'projects:retry-deletion-cleanup',
+    'retryDeletionCleanup',
+    Projects.projectApplicationCommandContracts.retryDeletionCleanup
+  ),
   projectUpdate: projectCommand(
     'projects:update',
     'update',
@@ -314,7 +328,10 @@ const dataContentApplicationCommands = Object.freeze({
     'sessions:set-delegation-policy',
     readonly [projectId: string, sessionId: string, policy: SessionPersistence.DelegationPolicy],
     SessionPersistence.PersistedChatSession
-  >('sessions:set-delegation-policy'),
+  >(
+    'sessions:set-delegation-policy',
+    SessionPersistence.sessionApplicationCommandContracts.setDelegationPolicy
+  ),
   uploadAbortTransfer: uploadCommand('uploads:abort-transfer', 'abortTransfer'),
   uploadAppendTransfer: uploadCommand('uploads:append-transfer', 'appendTransfer'),
   uploadBeginTransfer: uploadCommand('uploads:begin-transfer', 'beginTransfer'),
@@ -374,6 +391,8 @@ const dataContentApplicationCommandGroups = Object.freeze([
     dataContentApplicationCommands.projectDelete,
     dataContentApplicationCommands.projectGet,
     dataContentApplicationCommands.projectList,
+    dataContentApplicationCommands.projectListDeletionCleanup,
+    dataContentApplicationCommands.projectRetryDeletionCleanup,
     dataContentApplicationCommands.projectUpdate
   ] as const),
   defineApplicationCommandGroup('sessions', [
@@ -425,18 +444,13 @@ const assertElectronCaller = (
   }
 }
 
-const assertTaskAutomationCaller = (
+const assertSessionDelegationPolicyCaller = (
   invocation: ApplicationInvocation<readonly unknown[]>,
   name: string
 ): void => {
   const { callerContext } = invocation
-  if (
-    !callerContext.isAuthorizationCurrent() ||
-    callerContext.surface !== 'task' ||
-    callerContext.principalKind !== 'automation' ||
-    callerContext.actionOrigin !== 'automation'
-  ) {
-    throw new Error(`Channel only available from current Task automation: ${name}`)
+  if (!canMutateSessionDelegationPolicy(callerContext)) {
+    throw new Error(`Channel only available from current human or Task automation: ${name}`)
   }
 }
 
@@ -540,6 +554,9 @@ const registerDataContentApplicationCommands = (
       'projects:get': ({ args }) =>
         dependencies.withDataRootWrite(() => dependencies.projects.get(args[0])),
       'projects:list': () => dependencies.withDataRootWrite(() => dependencies.projects.list()),
+      'projects:list-deletion-cleanup': () =>
+        dependencies.withDataRootWrite(() => dependencies.projects.listDeletionCleanup()),
+      'projects:retry-deletion-cleanup': () => dependencies.projects.retryDeletionCleanup(),
       'projects:update-archive': ({ args }) =>
         dependencies.withDataRootWrite(async () => {
           const project = await dependencies.projects.updateArchive(args[0])
@@ -659,11 +676,10 @@ const registerDataContentApplicationCommands = (
         })
       },
       'sessions:set-delegation-policy': (invocation) => {
-        assertTaskAutomationCaller(
+        assertSessionDelegationPolicyCaller(
           invocation,
           dataContentApplicationCommands.sessionSetDelegationPolicy.name
         )
-        const originClientId = invocation.callerContext.lifecycleClientId
         return dependencies.withDataRootWrite(async () => {
           const session = await dependencies.sessions.setDelegationPolicy(
             invocation.args[0],
@@ -672,7 +688,7 @@ const registerDataContentApplicationCommands = (
           )
           publishLifecycle(dependencies.events, LIFECYCLE_CHANNELS.sessionUpdated, {
             session,
-            originClientId
+            originClientId: MAIN_DELEGATION_POLICY_LIFECYCLE_CLIENT_ID
           })
           return session
         })

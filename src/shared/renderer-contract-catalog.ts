@@ -71,6 +71,16 @@ import type {
   SaveSessionArtifactsResult
 } from './file-save'
 import type {
+  ManagedFileVersionCancelDiffRequest,
+  ManagedFileVersionDiffRequest,
+  ManagedFileVersionDiffResult,
+  ManagedFileVersionInspectRequest,
+  ManagedFileVersionInspectResult,
+  ManagedFileVersionIpcResult,
+  ManagedFileVersionSaveTextEditRequest,
+  SaveTextEditResult
+} from './managed-file-versions'
+import type {
   ContributionTemplateExportResult,
   SpecialistPackageReportSaveResult,
   SpecialistExportPreview,
@@ -158,6 +168,7 @@ import type {
   NotebookLanguage,
   NotebookNamespaceRequest,
   NotebookNamespaceSnapshot,
+  NotebookRestartRequest,
   NotebookRunSummary,
   NotebookSessionReference,
   NotebookSessionRequest,
@@ -198,6 +209,7 @@ import type {
   CreateProjectRequest,
   DeleteProjectRequest,
   Project,
+  ProjectDeletionCleanup,
   ProjectDeletionOutcome,
   UpdateProjectArchiveRequest,
   UpdateProjectRequest
@@ -235,6 +247,7 @@ import type {
 } from './project-files'
 import type {
   DeleteSessionRequest,
+  DelegationPolicy,
   EditSessionDetailsRequest,
   FilterSessionPdfContextCandidatesRequest,
   FilterSessionPdfContextCandidatesResult,
@@ -1026,6 +1039,26 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     'logs:reveal-in-folder',
     LOCAL
   ]),
+  'managedFileVersions.cancelDiff': callable<
+    (
+      request: ManagedFileVersionCancelDiffRequest
+    ) => Promise<ManagedFileVersionIpcResult<{ cancelled: boolean }>>
+  >()('managed-file-versions', ['managed-file-versions:cancel-diff', ELECTRON]),
+  'managedFileVersions.diffText': callable<
+    (
+      request: ManagedFileVersionDiffRequest
+    ) => Promise<ManagedFileVersionIpcResult<ManagedFileVersionDiffResult>>
+  >()('managed-file-versions', ['managed-file-versions:diff-text', ELECTRON]),
+  'managedFileVersions.inspect': callable<
+    (
+      request: ManagedFileVersionInspectRequest
+    ) => Promise<ManagedFileVersionIpcResult<ManagedFileVersionInspectResult>>
+  >()('managed-file-versions', ['managed-file-versions:inspect', ELECTRON]),
+  'managedFileVersions.saveTextEdit': callable<
+    (
+      request: ManagedFileVersionSaveTextEditRequest
+    ) => Promise<ManagedFileVersionIpcResult<SaveTextEditResult>>
+  >()('managed-file-versions', ['managed-file-versions:save-text-edit', ELECTRON]),
   'memory.clearAll': callable<() => Promise<MemorySnapshot>>()('memory', [
     'memory:clear-all',
     WEB,
@@ -1131,7 +1164,7 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     (request: ReadArtifactPreviewRequest) => Promise<ArtifactPreviewResult>
   >()('notebook', ['notebook:read-input-preview']),
   'notebook.restart': callable<
-    (request: NotebookSessionRequest) => Promise<NotebookSessionState>
+    (request: NotebookRestartRequest) => Promise<NotebookSessionState>
   >()('notebook', ['notebook:restart']),
   'notebook.runCell': callable<(request: RunNotebookCellRequest) => Promise<NotebookRunSummary>>()(
     'notebook',
@@ -1308,6 +1341,13 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     undefined,
     RUNTIME_VALIDATED
   ]),
+  'projects.listDeletionCleanup': callable<() => Promise<ProjectDeletionCleanup[]>>()('projects', [
+    'projects:list-deletion-cleanup',
+    WEB,
+    undefined,
+    undefined,
+    RUNTIME_VALIDATED
+  ]),
   'projects.onCreated': callable<(listener: AcpListener<Project>) => RemoveListener>()('projects', [
     'project:created',
     EVENT
@@ -1316,12 +1356,22 @@ export const RENDERER_API_CONTRACT = Object.freeze({
     'projects',
     ['project:deleted', EVENT]
   ),
+  'projects.onDeletionCleanupChanged': callable<
+    (listener: AcpListener<undefined>) => RemoveListener
+  >()('projects', ['project:deletion-cleanup-changed', EVENT]),
   'projects.onUpdated': callable<(listener: AcpListener<Project>) => RemoveListener>()('projects', [
     'project:updated',
     EVENT
   ]),
   'projects.update': callable<(request: UpdateProjectRequest) => Promise<Project>>()('projects', [
     'projects:update',
+    WEB,
+    undefined,
+    undefined,
+    RUNTIME_VALIDATED
+  ]),
+  'projects.retryDeletionCleanup': callable<() => Promise<void>>()('projects', [
+    'projects:retry-deletion-cleanup',
     WEB,
     undefined,
     undefined,
@@ -1503,6 +1553,13 @@ export const RENDERER_API_CONTRACT = Object.freeze({
   'sessions.saveSession': callable<
     (session: PersistedChatSession, options?: SaveSessionOptions) => Promise<PersistedChatSession>
   >()('sessions', ['sessions:save-session', WEB, SESSION_SAVE, SESSION_SAVE_JSON]),
+  'sessions.setDelegationPolicy': callable<
+    (
+      projectId: string,
+      sessionId: string,
+      policy: DelegationPolicy
+    ) => Promise<PersistedChatSession>
+  >()('sessions', ['sessions:set-delegation-policy', WEB, undefined, undefined, RUNTIME_VALIDATED]),
   'sessions.sendFlushResponse': callable<(response: SessionPersistenceFlushResponse) => void>()(
     'sessions',
     ['sessions:flush-response', SEND],
@@ -2295,6 +2352,7 @@ const RENDERER_CAPABILITY_ORDER = Object.freeze([
   'local-fs',
   'memory',
   'logs',
+  'managed-file-versions',
   'network',
   'notebook',
   'notebook-environment',

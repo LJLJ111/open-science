@@ -5,7 +5,12 @@ import {
   type ApplicationCommandRouter,
   type ApplicationInvocation
 } from './application-command-router'
-import { createCallerContext, createTaskCallerContext, type CallerContext } from './caller-context'
+import {
+  createCallerContext,
+  createTaskCallerContext,
+  createWebCallerContext,
+  type CallerContext
+} from './caller-context'
 import { ArtifactOwnershipPersistenceRaceError } from './artifacts/provenance-repository'
 import {
   dataContentApplicationCommandGroups,
@@ -18,6 +23,7 @@ import {
   type SessionDeletionResult
 } from '../shared/session-persistence'
 import { ApplicationCommandError } from '../shared/application-command-contract'
+import { MAIN_DELEGATION_POLICY_LIFECYCLE_CLIENT_ID } from '../shared/lifecycle-events'
 import { ApplicationEventHub } from './application-events'
 import {
   beginMigration,
@@ -133,6 +139,8 @@ const createDependencies = () => {
     delete: vi.fn(async () => ({ status: 'cleanup-pending' as const })),
     get: vi.fn(async () => project),
     list: vi.fn(async () => [project]),
+    listDeletionCleanup: vi.fn(async () => []),
+    retryDeletionCleanup: vi.fn(async () => undefined),
     updateArchive: vi.fn(async () => project),
     update: vi.fn(async () => project)
   }
@@ -302,6 +310,8 @@ describe('Data and content application commands', () => {
         'projects:delete',
         'projects:get',
         'projects:list',
+        'projects:list-deletion-cleanup',
+        'projects:retry-deletion-cleanup',
         'projects:update',
         'sessions:delete-session',
         'sessions:edit-details',
@@ -461,6 +471,16 @@ describe('Data and content application commands', () => {
       },
       { key: 'projectGet', args: ['project-1'], owner: deps.projects.get },
       { key: 'projectList', args: [], owner: deps.projects.list },
+      {
+        key: 'projectListDeletionCleanup',
+        args: [],
+        owner: deps.projects.listDeletionCleanup
+      },
+      {
+        key: 'projectRetryDeletionCleanup',
+        args: [],
+        owner: deps.projects.retryDeletionCleanup
+      },
       {
         key: 'projectUpdateArchive',
         args: [{ id: 'project-1', archived: true, expectedArchivedAt: null }],
@@ -656,7 +676,7 @@ describe('Data and content application commands', () => {
     const deps = createDependencies()
     registerDataContentApplicationCommands(router.registrar, deps.dependencies)
     const managedInvocation = invocation([
-      { source: 'artifact' as const, path: 'artifact://report' }
+      { source: 'local' as const, path: '/managed/report' }
     ] as const)
     const uploadInvocation = invocation([
       { transferId: 'transfer-1', offset: 0, chunk: new Uint8Array([1]) }
@@ -883,7 +903,7 @@ describe('Data and content application commands', () => {
     expect(deps.events.publish).not.toHaveBeenCalled()
   })
 
-  it('allows only current Task automation to update main-owned delegation policy', async () => {
+  it('allows current Electron/Web humans and Task automation to update main-owned delegation policy', async () => {
     const router = createApplicationCommandRouter()
     const deps = createDependencies()
     registerDataContentApplicationCommands(router.registrar, deps.dependencies)
@@ -898,24 +918,82 @@ describe('Data and content application commands', () => {
     expect(deps.sessions.setDelegationPolicy).toHaveBeenCalledWith(...args)
     expect(deps.events.publish).toHaveBeenCalledWith('session:updated', {
       session: deps.session,
-      originClientId: 'web:headless-task-api'
+      originClientId: MAIN_DELEGATION_POLICY_LIFECYCLE_CLIENT_ID
     })
 
-    await expect(
-      router.dispatcher.invoke(
-        dataContentApplicationCommands.sessionSetDelegationPolicy,
-        invocation(args)
-      )
-    ).rejects.toThrow(
-      'Channel only available from current Task automation: sessions:set-delegation-policy'
-    )
+    for (const currentHuman of [electronCaller, callerContext, remoteCaller]) {
+      await expect(
+        router.dispatcher.invoke(
+          dataContentApplicationCommands.sessionSetDelegationPolicy,
+          invocation(args, currentHuman)
+        )
+      ).resolves.toBe(deps.session)
+    }
     await expect(
       router.dispatcher.invoke(
         dataContentApplicationCommands.sessionSetDelegationPolicy,
         invocation(args, createTaskCallerContext({ isAuthorizationCurrent: () => false }))
       )
     ).rejects.toThrow('Caller authorization is no longer current.')
-    expect(deps.sessions.setDelegationPolicy).toHaveBeenCalledOnce()
+    const rejectedCallers = [
+      createWebCallerContext('agent', {
+        principalKind: 'agent-session',
+        actionOrigin: 'agent-session'
+      }),
+      createWebCallerContext('human-agent-origin', { actionOrigin: 'agent-session' }),
+      createWebCallerContext('automation-human-origin', {
+        principalKind: 'automation',
+        actionOrigin: 'human'
+      })
+    ]
+    for (const rejectedCaller of rejectedCallers) {
+      await expect(
+        router.dispatcher.invoke(
+          dataContentApplicationCommands.sessionSetDelegationPolicy,
+          invocation(args, rejectedCaller)
+        )
+      ).rejects.toThrow(
+        'Channel only available from current human or Task automation: sessions:set-delegation-policy'
+      )
+    }
+    expect(deps.sessions.setDelegationPolicy).toHaveBeenCalledTimes(4)
+  })
+
+  it('runtime-validates delegation policy arguments and shared authoritative Session results', async () => {
+    const router = createApplicationCommandRouter()
+    const deps = createDependencies()
+    registerDataContentApplicationCommands(router.registrar, deps.dependencies)
+
+    await expect(
+      router.dispatcher.invoke(
+        dataContentApplicationCommands.sessionSetDelegationPolicy,
+        invocation(['project-1', 'session-1', 'sometimes'] as never)
+      )
+    ).rejects.toMatchObject({ code: 'invalid-command-arguments' })
+    expect(deps.sessions.setDelegationPolicy).not.toHaveBeenCalled()
+
+    deps.sessions.setDelegationPolicy.mockResolvedValueOnce({ id: 'malformed' } as never)
+    await expect(
+      router.dispatcher.invoke(
+        dataContentApplicationCommands.sessionSetDelegationPolicy,
+        invocation(['project-1', 'session-1', 'allow'] as const)
+      )
+    ).rejects.toMatchObject({ code: 'invalid-command-result' })
+
+    deps.sessions.editDetails.mockResolvedValueOnce({ id: 'malformed' } as never)
+    await expect(
+      router.dispatcher.invoke(
+        dataContentApplicationCommands.sessionEditDetails,
+        invocation([
+          {
+            projectId: 'project-1',
+            sessionId: 'session-1',
+            title: 'Updated title',
+            description: 'Updated description'
+          }
+        ] as const)
+      )
+    ).rejects.toMatchObject({ code: 'invalid-command-result' })
   })
 
   it('dispatches every remaining Project and Session wrapper to its existing owner', async () => {
@@ -939,7 +1017,7 @@ describe('Data and content application commands', () => {
     registerDataContentApplicationCommands(router.registrar, deps.dependencies)
     const updateRequest = { id: 'project-1', name: 'Updated project', expectedUpdatedAt: 1 }
     const deleteProjectRequest = { id: 'project-1' }
-    const manifestRequest = { lastProjectId: 'project-1', lastSessionId: 'session-1' }
+    const manifestRequest = { lastSessionId: 'session-1' }
     const deleteSessionRequest = { projectId: 'project-1', sessionId: 'session-1' }
     const editDetailsRequest = {
       projectId: 'project-1',

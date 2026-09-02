@@ -490,7 +490,8 @@ describe('Session persistence coordinator architecture', () => {
       'permissionGrants:optional',
       'log:defaulted',
       'computeJobs:optional',
-      'onDelegatedWorkSessionUpdated:optional'
+      'onDelegatedWorkSessionUpdated:optional',
+      'onDelegationPolicyUpdated:optional'
     ])
     expect(exportedNames(facadeFile, 'value')).toEqual(
       ['SessionPersistenceCoordinator', 'SessionRuntimeContextRevisionConflictError'].sort()
@@ -1037,6 +1038,8 @@ describe('Session persistence coordinator architecture', () => {
       'src/main/session-persistence/coordinator-contract.test.ts'
     ])
     expect(sessionPersistence.testFiles.consumer).toEqual([
+      'src/main/delegation/durable-delegated-work.test.ts',
+      'src/main/delegation/session-record-adapter.test.ts',
       'src/main/session-persistence/artifact-finalization-recovery.integration.test.ts',
       'src/main/session-persistence/deletion-integration.test.ts'
     ])

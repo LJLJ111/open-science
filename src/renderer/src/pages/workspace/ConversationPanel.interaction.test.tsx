@@ -97,6 +97,9 @@ vi.mock('./ComposerAgentControlsMenu', () => ({
   ComposerAgentControlsMenu: (props: {
     readOnly?: boolean
     memoryReadOnly?: boolean
+    delegationReadOnly?: boolean
+    delegationHasLiveAttempts?: boolean
+    delegationDisabledReason?: string
     autoReviewReadOnly?: boolean
     permissionProfileReadOnly?: boolean
     grantActionsReadOnly?: boolean
@@ -109,6 +112,9 @@ vi.mock('./ComposerAgentControlsMenu', () => ({
       data-testid="mock-agent-controls"
       data-read-only={String(props.readOnly === true)}
       data-memory-read-only={String(props.memoryReadOnly)}
+      data-delegation-read-only={String(props.delegationReadOnly)}
+      data-delegation-live={String(props.delegationHasLiveAttempts)}
+      data-delegation-disabled-reason={props.delegationDisabledReason}
       data-auto-review-read-only={String(props.autoReviewReadOnly)}
       data-permission-read-only={String(props.permissionProfileReadOnly === true)}
       data-grants-read-only={String(props.grantActionsReadOnly === true)}
@@ -159,10 +165,12 @@ vi.mock('./WorkspaceMessageScroller', () => ({
   WorkspaceMessageScroller: ({
     credentialPending,
     isResumingSession,
+    visiblePermissionPending,
     pendingElicitations = []
   }: {
     credentialPending?: boolean
     isResumingSession?: boolean
+    visiblePermissionPending?: boolean
     pendingElicitations?: unknown[]
   }): React.JSX.Element => (
     <>
@@ -171,6 +179,9 @@ vi.mock('./WorkspaceMessageScroller', () => ({
       ) : null}
       <span data-testid="scroller-pending-elicitations">{pendingElicitations.length}</span>
       <span data-testid="scroller-credential-pending">{String(credentialPending ?? false)}</span>
+      <span data-testid="scroller-visible-permission-pending">
+        {String(visiblePermissionPending ?? false)}
+      </span>
     </>
   )
 }))
@@ -1181,6 +1192,9 @@ describe('ConversationPanel composer intake', () => {
 
     expect(container.querySelector('[data-testid="permission-composer"]')).toBeNull()
     expect(container.querySelector('[data-testid="permission-approval-controls"]')).not.toBeNull()
+    expect(
+      container.querySelector('[data-testid="scroller-visible-permission-pending"]')?.textContent
+    ).toBe('true')
     expect(getComposerForm().hidden).toBe(false)
     expect(getComposerEditor().getAttribute('contenteditable')).toBe('true')
   })
@@ -2406,7 +2420,9 @@ describe('ConversationPanel composer intake', () => {
         canChange: false,
         canChangeAutoReview: true,
         canChangeMemory: true,
-        canChangeSpecialist: true
+        canChangeSpecialist: true,
+        canChangeDelegation: true,
+        delegationHasLiveAttempts: true
       }
     })
 
@@ -2414,6 +2430,8 @@ describe('ConversationPanel composer intake', () => {
     expect(controls?.getAttribute('data-read-only')).toBe('true')
     expect(controls?.getAttribute('data-memory-read-only')).toBe('false')
     expect(controls?.getAttribute('data-auto-review-read-only')).toBe('false')
+    expect(controls?.getAttribute('data-delegation-read-only')).toBe('false')
+    expect(controls?.getAttribute('data-delegation-live')).toBe('true')
     expect(controls?.getAttribute('data-specialist-read-only')).toBe('false')
   })
 

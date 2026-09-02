@@ -13,6 +13,7 @@ import {
   isSessionRevisionConflictError,
   sessionRevision,
   type DeleteSessionRequest,
+  type DelegationPolicy,
   type LoadAllSessionsResult,
   type ListSessionSummariesResult,
   type LoadSessionRequest,
@@ -78,6 +79,25 @@ const hydratePersistedSessionIfPresent = (
 const deleteSession = (request: DeleteSessionRequest): Promise<SessionDeletionResult> =>
   window.api.sessions.deleteSession(request)
 
+const toPersistedSessionForAuthorityMaterialization = (
+  session: ChatSession
+): PersistedChatSession => {
+  const persisted = toPersistedSession(session)
+  return session.delegationPolicyAuthorityPending
+    ? { ...persisted, delegationPolicy: 'allow' }
+    : persisted
+}
+
+const setDelegationPolicyAuthority = async (
+  projectId: string,
+  sessionId: string,
+  policy: DelegationPolicy
+): Promise<PersistedChatSession> => {
+  const authoritative = await window.api.sessions.setDelegationPolicy(projectId, sessionId, policy)
+  useSessionStore.getState().applyDelegationPolicyAuthority(authoritative)
+  return authoritative
+}
+
 type LatestSessionSaveTask = (options?: SaveSessionOptions) => Promise<PersistedChatSession>
 type OrderedSessionSaveRecovery = (
   error: unknown,
@@ -98,6 +118,8 @@ type OrderedSessionPersistence = Pick<SessionPersistenceApi, 'saveSession' | 'sa
   ) => Promise<PersistedChatSession>
   seedAcknowledgedSessions: (sessions: readonly PersistedChatSession[]) => void
   getAcknowledgedSession: (sessionId: string) => PersistedChatSession | undefined
+  clearWriteFailure: (target: string) => void
+  clearWriteFailures: () => void
   flush: () => Promise<void>
 }
 
@@ -609,6 +631,8 @@ const createOrderedSessionPersistence = (
   const acknowledgedRevisions = new Map<string, number>()
   const acknowledgedSessions = new Map<string, PersistedChatSession>()
   const pendingLatestByTarget = new Map<string, PendingLatestSessionSave>()
+  // The queue swallows rejections to stay usable; retain terminal failures until that target heals.
+  const failedWritesByTarget = new Map<string, unknown>()
   let hydrationGeneration = 0
   let latestSessionSaveStartedAt = Number.NEGATIVE_INFINITY
 
@@ -653,10 +677,29 @@ const createOrderedSessionPersistence = (
     }
   }
 
-  const enqueue = <Result>(task: () => Promise<Result>): Promise<Result> => {
+  const trackWrite = async <Result>(
+    target: string,
+    task: () => Promise<Result>
+  ): Promise<Result> => {
+    try {
+      const result = await task()
+      failedWritesByTarget.delete(target)
+      return result
+    } catch (error) {
+      if (!(error instanceof SessionPersistenceGenerationChangedError)) {
+        failedWritesByTarget.set(target, error)
+      }
+      throw error
+    }
+  }
+
+  const enqueue = <Result>(target: string, task: () => Promise<Result>): Promise<Result> => {
     releasePendingLatestCadence()
     pendingLatestByTarget.clear()
-    const run = queue.then(task, task)
+    const run = queue.then(
+      () => trackWrite(target, task),
+      () => trackWrite(target, task)
+    )
     queue = run.then(
       () => undefined,
       () => undefined
@@ -710,7 +753,10 @@ const createOrderedSessionPersistence = (
       acknowledgeSession(durable)
       return durable
     }
-    const run = queue.then(runTask, runTask)
+    const run = queue.then(
+      () => trackWrite(target, runTask),
+      () => trackWrite(target, runTask)
+    )
     entry.promise = run
     pendingLatestByTarget.set(target, entry)
     queue = run.then(
@@ -729,6 +775,9 @@ const createOrderedSessionPersistence = (
       releasePendingLatestCadence()
       pendingLatestByTarget.clear()
       latestSessionSaveStartedAt = Number.NEGATIVE_INFINITY
+      for (const target of failedWritesByTarget.keys()) {
+        if (target.startsWith('session:')) failedWritesByTarget.delete(target)
+      }
       for (const session of sessions) {
         acknowledgedRevisions.set(session.id, sessionRevision(session))
         acknowledgedSessions.set(session.id, structuredClone(session))
@@ -738,9 +787,12 @@ const createOrderedSessionPersistence = (
       const session = acknowledgedSessions.get(sessionId)
       return session ? structuredClone(session) : undefined
     },
-    saveSession: (session, options) => enqueue(() => saveSubmittedSession(session, options)),
+    clearWriteFailure: (target) => failedWritesByTarget.delete(target),
+    clearWriteFailures: () => failedWritesByTarget.clear(),
+    saveSession: (session, options) =>
+      enqueue(`session:${session.id}`, () => saveSubmittedSession(session, options)),
     saveSessionWithRecovery: (session, options, recover) =>
-      enqueue(async () => {
+      enqueue(`session:${session.id}`, async () => {
         const submitted = structuredClone(session)
         submitted.revision = Math.max(
           sessionRevision(submitted),
@@ -752,10 +804,12 @@ const createOrderedSessionPersistence = (
           return recover(error, submitted, saveSubmittedSession)
         }
       }),
-    saveManifest: (request) => enqueue(() => api.saveManifest(request)),
-    flush: () => {
+    saveManifest: (request) => enqueue('manifest', () => api.saveManifest(request)),
+    flush: async () => {
       releasePendingLatestCadence()
-      return queue.then(() => undefined)
+      await queue
+      const failure = failedWritesByTarget.values().next()
+      if (!failure.done) throw failure.value
     }
   }
 }
@@ -771,6 +825,10 @@ const liveSessionPersistence = createOrderedSessionPersistence({
 })
 
 const unresolvedSessionRevisionConflictTargets = new Set<string>()
+
+const resetSessionPersistenceWriteFailuresForTests = (): void => {
+  liveSessionPersistence.clearWriteFailures()
+}
 
 const saveSessionInOrder = async (
   session: PersistedChatSession,
@@ -808,6 +866,20 @@ const saveSessionInOrder = async (
     if (isSessionRevisionConflictError(error)) unresolvedSessionRevisionConflictTargets.add(target)
     throw error
   }
+}
+
+const confirmPendingDelegationPolicyAuthority = async (
+  session: ChatSession
+): Promise<PersistedChatSession | undefined> => {
+  if (!session.delegationPolicyAuthorityPending) return undefined
+  const materialized = await saveSessionInOrder(
+    toPersistedSessionForAuthorityMaterialization(session)
+  )
+  return setDelegationPolicyAuthority(
+    materialized.projectId,
+    materialized.id,
+    session.delegationPolicy ?? 'allow'
+  )
 }
 
 class SessionPersistenceFlushConflictError extends Error {
@@ -992,6 +1064,7 @@ const pruneRemovedSessionWriteTargets = (
       targets.delete(target)
       conflictRebaseFields?.delete(target)
       for (const related of relatedTargets) related.delete(target)
+      liveSessionPersistence.clearWriteFailure(target)
     }
   }
 }
@@ -1401,8 +1474,7 @@ const createStoreSaver = (
           run: async () => {
             try {
               await persistence.saveManifest({
-                lastSessionId: state.selectedSessionId,
-                lastProjectId: selectedSession?.projectId
+                lastSessionId: state.selectedSessionId
               })
             } catch (error) {
               reportPersistenceError(error, 'session-manifest-save')
@@ -1743,6 +1815,7 @@ const useSessionPersistence = (): SessionPersistenceState => {
 
 export {
   MAX_SESSION_REVISION_REBASE_ATTEMPTS,
+  confirmPendingDelegationPolicyAuthority,
   createOrderedSessionPersistence,
   createStoreSaver,
   flushSessionPersistence,
@@ -1750,9 +1823,12 @@ export {
   loadPersistedSession,
   loadPersistedSessions,
   reconcilePendingArtifacts,
+  resetSessionPersistenceWriteFailuresForTests,
   deriveSessionCatalogRecovery,
   deleteSession,
   saveSessionInOrder,
+  setDelegationPolicyAuthority,
+  toPersistedSessionForAuthorityMaterialization,
   useSessionPersistence
 }
 export type {

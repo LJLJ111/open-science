@@ -86,7 +86,6 @@ import { ALL_CONNECTOR_IDS } from './connectors/registry'
 import { connectorSkillSourceDir } from './connectors/provision'
 import { registerFileSaveHandlers } from './file-save'
 import { ImmutableInputAuthority } from './immutable-input-authority'
-import { createSessionArtifactFileResolver } from './session-artifact-file-resolver'
 import { createCliCommandOwner, registerCliInstallIpcHandlers } from './cli-install/ipc'
 
 import { createGithubCommandOwner, registerGithubIpcHandlers } from './github-ipc'
@@ -141,7 +140,10 @@ import {
 } from './managed-preview-ipc'
 import { ManagedPreviewResources } from './managed-preview-resources'
 import type { PreviewProtocolRegistrar } from './managed-preview-protocol'
-import type { ManagedPreviewSource } from '../shared/preview-resources'
+import type {
+  AcquireManagedPreviewRequest,
+  ManagedPreviewSource
+} from '../shared/preview-resources'
 import { resolveEffectiveSpecialistSkills } from '../shared/specialist'
 import {
   createOfficePreviewFrameProcessResolver,
@@ -182,7 +184,10 @@ import { PENDING_UPLOAD_SESSION_ID, parseUploadVersionReference } from '../share
 import { DEFAULT_ARTIFACT_PROJECT_ID } from '../shared/artifacts'
 import type { NotebookLanguage } from '../shared/notebook'
 import { MAIN_ENABLED_COMPUTE_HOSTS_LIFECYCLE_CLIENT_ID } from '../shared/lifecycle-events'
-import { OFFICE_PREVIEW_STATE_CHANNEL } from '../shared/office-preview'
+import {
+  OFFICE_PREVIEW_STATE_CHANNEL,
+  type OfficePreviewOpenRequest
+} from '../shared/office-preview'
 import { prepareExternalPythonRuntime } from './notebook/venv-overlay'
 import {
   createDefaultPreviewStateRepository,
@@ -212,8 +217,14 @@ import {
   createConversationExportService,
   registerConversationExportIpcHandler
 } from './session-persistence/conversation-export'
+import { SessionProjectionDiagnostics } from './session-persistence/projection-diagnostics'
 import { createProjectFilesHandlers, registerProjectFilesIpcHandlers } from './project-files/ipc'
 import { createManagedFileIndexRepository } from './project-files/repository'
+import {
+  createManagedFileVersionHandlers,
+  registerManagedFileVersionIpcHandlers
+} from './managed-file-versions/ipc'
+import { ManagedFileVersionService } from './managed-file-versions/service'
 import {
   ProjectDeletionCoordinator,
   ProjectDeletionRecoveryLoop
@@ -237,7 +248,10 @@ import { withSessionCacheDeletion } from './compute/session-cache-owner'
 import { createMainPromptSideChatRelay } from './side-chat/main-prompt-relay'
 import { registerSideChatIpcHandlers } from './side-chat/ipc'
 import { SideChatRuntimeOwner } from './side-chat/runtime-owner'
-import { type SessionPersistenceBackend } from './session-persistence/ipc'
+import {
+  coordinateSessionPersistenceWithProjectDeletions,
+  type SessionPersistenceBackend
+} from './session-persistence/ipc'
 import { MainMessageAttributionAuthority } from './session-persistence/message-attribution-authority'
 import {
   SessionAuxiliaryTurnUsageRecorder,
@@ -694,6 +708,10 @@ const createApplicationModules = async (
       diagnosticErrorFields(error)
     )
   }
+  const managedFileVersionService = new ManagedFileVersionService({
+    storageRoot: resolveDataRoot(),
+    getClient: () => getProjectDbClient(resolveStorageRoot())
+  })
   // Session reads and permission scope validation both need a late-bound view of ACP ownership:
   // startup runs before the runtime exists, while later reads must preserve live prompt state.
   const runtimeRef: { current: ReturnType<typeof createAcpRuntime> | undefined } = {
@@ -781,12 +799,13 @@ const createApplicationModules = async (
   const artifactRepository = createDefaultArtifactRepository()
   const immutableInputAuthority = new ImmutableInputAuthority({
     storageRoot: resolveDataRoot(),
-    getClient: () => getProjectDbClient(resolveStorageRoot())
+    managedFileVersions: managedFileVersionService
   })
   const artifactProvenanceRepository = new ArtifactProvenanceRepository({
     storageRoot: resolveDataRoot(),
     getClient: () => getProjectDbClient(resolveStorageRoot()),
     inputAuthority: immutableInputAuthority,
+    managedFileVersions: managedFileVersionService,
     compatibilityRepository: artifactRepository,
     loadSession: (projectId, appSessionId) => sessionRepository.loadSession(projectId, appSessionId)
   })
@@ -797,9 +816,6 @@ const createApplicationModules = async (
   const artifactRunRegistry = new ArtifactRunRegistry()
   // The upload repository above is shared so staging recovery, Session upgrade, prompt finalization,
   // and previews all observe one durable Version authority.
-  const notebookInputRegistry = new NotebookInputRegistry({
-    inputAuthority: immutableInputAuthority
-  })
   // Shared local-fs service backs both the "This computer" browser IPC and the managed-preview
   // resolver below, so path validation stays identical across both entry points. Granted folder
   // roots persist in the SQLite project DB behind the local-fs:granted-roots:* channels; the
@@ -815,45 +831,28 @@ const createApplicationModules = async (
   )
   // One source-neutral resolver keeps previews and user-requested exports on identical trust checks.
   const resolveManagedFilePath = (
-    source: ManagedPreviewSource,
-    request: { path: string; projectId?: string; sessionId?: string }
+    _source: Extract<ManagedPreviewSource, 'local'>,
+    request: {
+      path: string
+      projectId?: string
+      sessionId?: string
+      fileId?: string
+      versionId?: string
+    }
   ): Promise<string> => {
-    if (source === 'artifact') {
-      const versionIdentity = parseArtifactVersionLocator(request.path)
-      return versionIdentity
-        ? artifactProvenanceRepository
-            .resolveVersionContent(versionIdentity)
-            .then((resolved) => resolved.path)
-        : artifactRepository.resolveManagedFilePath(request)
-    }
-    if (source === 'upload') {
-      return uploadRepository.resolveManagedUploadPath(request, {
-        projectId: request.projectId,
-        sessionId: request.sessionId
-      })
-    }
-    if (source === 'notebook-input') {
-      return notebookInputRegistry
-        .resolvePreviewKey(request.path)
-        .then((target) => target.absolutePath)
-    }
-    // 'local' is the only remaining source, and it is the one that resolves an arbitrary host path.
-    // Falling through to it by default would silently widen any future source added to the union, so
-    // name it and reject anything unknown.
-    if (source === 'local') return localFsService.resolveFilePath(request)
-    const unhandled: never = source
-    return Promise.reject(new Error(`Unsupported managed preview source: ${String(unhandled)}`))
+    return localFsService.resolveFilePath(request)
   }
-  const resolveSessionArtifactFilePath = createSessionArtifactFileResolver({
-    compatibilityProjectId: DEFAULT_ARTIFACT_PROJECT_ID,
-    resolveVersionContent: (identity) =>
-      artifactProvenanceRepository.resolveVersionContent(identity),
-    resolveLegacyArtifactPath: (projectId, sessionId, path) =>
-      artifactRepository.resolveSessionArtifactFilePath(projectId, sessionId, path)
-  })
   // One registry owns short-lived capability URLs for both managed artifact repositories.
   const previewResources = new ManagedPreviewResources({
-    resolvePath: resolveManagedFilePath
+    resolvePath: resolveManagedFilePath,
+    openLatestManagedFile: (source, request) =>
+      managedFileVersionService.openLatest({ source, ...request }),
+    openManagedFileVersion: (source, request) =>
+      managedFileVersionService.openVersion(
+        { source, projectId: request.projectId, fileId: request.fileId },
+        request.versionId
+      ),
+    openNotebookInput: (request) => notebookInputRegistry.openPreviewKey(request.path)
   })
   const managedPreviewOwners = createManagedPreviewOwnerRegistry(previewResources)
 
@@ -889,8 +888,21 @@ const createApplicationModules = async (
   const projectFilesRepository = createManagedFileIndexRepository(
     getProjectDbClient,
     configRoot,
-    resolveDataRoot()
+    resolveDataRoot(),
+    managedFileVersionService,
+    uploadRepository
   )
+  const notebookInputRegistry = new NotebookInputRegistry({
+    inputAuthority: immutableInputAuthority,
+    resolveArtifactVersionIdentity: async (projectId, versionId) => {
+      const [artifact] = await projectFilesRepository.readHostArtifactCatalog({
+        projectId,
+        versionId,
+        finalizedArtifactsOnly: true
+      })
+      return artifact?.source === 'artifact' ? { sourceFileId: artifact.sourceFileId } : undefined
+    }
+  })
   const isComputeJobOwnerLive = async ({
     projectId,
     sessionId
@@ -978,6 +990,10 @@ const createApplicationModules = async (
   const delegatedActivity = createDelegatedActivityProjection()
   const getActiveDelegatedSessions = (): { projectId: string; sessionId: string }[] =>
     delegatedActivity.getActiveDelegatedSessions()
+  const getActiveSideChatSessions = (): { projectId: string; sessionId: string }[] =>
+    (sideChatOwnerRef.current?.list().chats ?? [])
+      .filter((chat) => chat.running)
+      .map((chat) => ({ projectId: chat.projectId, sessionId: chat.parentSessionId }))
 
   const sessionPersistenceCoordinator = new SessionPersistenceCoordinator(
     sessionRepository,
@@ -1007,6 +1023,13 @@ const createApplicationModules = async (
         session,
         originClientId: MAIN_DELEGATED_WORK_LIFECYCLE_CLIENT_ID
       })
+    },
+    (session) => {
+      // Re-enabling Delegation invalidates the last admission rejection, so the Subagent
+      // availability notice disappears instead of waiting for the next successful delegation.
+      if (session.delegationPolicy === 'allow') {
+        delegatedWorkRef.current?.root.clearUnavailableReason?.(session.id)
+      }
     }
   )
   const sessionPdfContextOwner = new SessionPdfContextOwner({
@@ -1072,6 +1095,17 @@ const createApplicationModules = async (
     onDelivered: (event) => broadcastToRenderers('side-chat:relay-delivered', event)
   })
   const uploadCommandOwner = createUploadCommandOwner(uploadRepository, {
+    openLatestManagedFile: (request) =>
+      managedFileVersionService.openLatest({
+        source: 'upload',
+        projectId: request.projectId!,
+        fileId: request.fileId!
+      }),
+    openManagedFileVersion: (request) =>
+      managedFileVersionService.openVersion(
+        { source: 'upload', projectId: request.projectId!, fileId: request.fileId! },
+        request.versionId
+      ),
     withSessionMutation: (projectId, sessionId, mutation) =>
       sessionPersistenceCoordinator.runSessionMutation(projectId, sessionId, mutation)
   })
@@ -1124,6 +1158,7 @@ const createApplicationModules = async (
       runtime: {
         getActivePromptSessions: () => runtimeRef.current?.getActivePromptSessions() ?? []
       },
+      sideChat: { getActivePromptSessions: getActiveSideChatSessions },
       delegated: { getActiveDelegatedSessions },
       notebook: {
         getActiveNotebookSessions: () =>
@@ -1190,6 +1225,10 @@ const createApplicationModules = async (
     sessionPersistenceCoordinator,
     projectDeletionCoordinator
   )
+  const managedFileVersionHandlers = createManagedFileVersionHandlers(managedFileVersionService, {
+    withDataRootWrite,
+    onChanged: (event) => broadcastToRenderers('project-files:changed', event)
+  })
   // Stashed host.agents.switch bindings for sessions that are not yet durable (fresh unsent drafts),
   // flushed to disk on the session's first save so an approved switch survives an app restart before
   // the next message. Shared by persistSessionSpecialist (stash) and saveSession (flush).
@@ -1205,6 +1244,7 @@ const createApplicationModules = async (
     sessionLoader: sessionPersistenceCoordinator
   })
   const loadAllSessions = (): Promise<LoadAllSessionsResult> => sessionCatalogHydration.loadAll()
+  const sessionProjectionDiagnostics = new SessionProjectionDiagnostics()
   const ensureSessionProjection = async (): Promise<{
     result?: LoadAllSessionsResult
     sessions: SessionSummary[]
@@ -1227,18 +1267,14 @@ const createApplicationModules = async (
     )
     return { ...projection, result }
   }
-  const sessionPersistenceBackend: SessionPersistenceBackend = {
+  const uncoordinatedSessionPersistenceBackend: SessionPersistenceBackend = {
     loadAll: loadAllSessions,
     list: async () => {
       const projection = await ensureSessionProjection()
       return {
         sessions: projection.sessions,
         manifest: projection.result?.manifest ?? (await sessionRepository.loadManifest()),
-        diagnostics: projection.result?.diagnostics ?? {
-          isComplete: true,
-          warnings: [],
-          isProjectDeletionRecoveryComplete: true
-        }
+        diagnostics: sessionProjectionDiagnostics.resolve(projection.result?.diagnostics)
       }
     },
     loadUsage: async () => {
@@ -1261,7 +1297,6 @@ const createApplicationModules = async (
         : session
     },
     saveSession: async (session, options) => {
-      await projectDeletionCoordinator.recoverPendingDeletions()
       const created =
         (await sessionRepository.loadSession(session.projectId, session.id)) === undefined
       let durableSession = created
@@ -1290,24 +1325,24 @@ const createApplicationModules = async (
       return { created, session: durableSession }
     },
     setDelegationPolicy: async (projectId, sessionId, policy) => {
-      await projectDeletionCoordinator.recoverPendingDeletions()
       return sessionPersistenceCoordinator.setSessionDelegationPolicy(projectId, sessionId, policy)
     },
     updateArchive: async (request) => {
-      await projectDeletionCoordinator.recoverPendingDeletions()
       return archiveCoordinator.updateSessionArchive(request)
     },
     deleteSession: async (projectId, sessionId) => {
-      await projectDeletionCoordinator.recoverPendingDeletions()
       const result = await sessionPersistenceCoordinator.deleteSession(projectId, sessionId)
       await permissionGrantRegistry.prune({ kind: 'session', projectId, sessionId })
       return result
     },
     saveManifest: async (request) => {
-      await projectDeletionCoordinator.recoverPendingDeletions()
       return sessionPersistenceCoordinator.saveManifest(request)
     }
   }
+  const sessionPersistenceBackend = coordinateSessionPersistenceWithProjectDeletions(
+    uncoordinatedSessionPersistenceBackend,
+    projectDeletionCoordinator
+  )
   let backendTeardownOwnedByCoordinator = false
   const provisioningRoot = runtimeRoot(resolveDataRoot())
   // One runner owns Windows integrity/preflight/fallback state for every production micromamba
@@ -1739,6 +1774,7 @@ const createApplicationModules = async (
       onSkillImportLifecycleSettled: (id, state) =>
         void taskNotifications.settleAuthorization('skill-import', id, state),
       uploads: uploadRepository,
+      managedFileVersions: managedFileVersionService,
       fetchImpl: netFetchStandard,
       resolveApiKey: (ref) => tryDecryptKey(ref),
       canRequestCredential: () => !headless && BrowserWindow.getAllWindows().length > 0,
@@ -1826,6 +1862,29 @@ const createApplicationModules = async (
   sessionCacheOwnerRef.current = sessionCacheOwner
   computeJobDeletionRef.current = withSessionCacheDeletion(jobDeletionOwner, sessionCacheOwner)
   await projectDeletionCoordinator.restorePendingDeletionBarriers()
+  try {
+    await withDataRootWrite(() => managedFileVersionService.recoverPendingWrites())
+  } catch (error) {
+    storageLog.error(
+      'managed file version recovery incomplete; will retry next launch',
+      diagnosticErrorFields(error)
+    )
+  }
+  void managedFileVersionService
+    .auditActiveVersionIntegrity()
+    .then((integrityErrors) => {
+      if (integrityErrors.length > 0) {
+        storageLog.error('managed file version integrity audit found corrupt active content', {
+          count: integrityErrors.length
+        })
+      }
+    })
+    .catch((error) =>
+      storageLog.error(
+        'managed file version integrity audit incomplete; will retry next launch',
+        diagnosticErrorFields(error)
+      )
+    )
   await jobDeletionOwner.restoreOrphanJobDeletionBarriers(isComputeJobOwnerLive)
   composition.phase('deletion-barriers')
   const dataRoot = resolveDataRoot()
@@ -1971,6 +2030,7 @@ const createApplicationModules = async (
       repository: artifactRepository,
       runRegistry: artifactRunRegistry,
       provenanceRepository: artifactProvenanceRepository,
+      managedFileVersions: managedFileVersionService,
       uploadRepository,
       peekNotebookHandoffContext: (sessionId) => notebookService.peekHandoffContext(sessionId),
       authorizeSkillImportReferencedUploads: (projectId, sessionId, paths) =>
@@ -2036,25 +2096,37 @@ const createApplicationModules = async (
     },
     async resolveInput(identity, session) {
       const artifact = parseArtifactVersionLocator(identity)
-      if (artifact) {
-        if (
-          artifact.projectId !== session.projectId ||
-          artifact.appSessionId !== session.sessionId
-        ) {
-          throw new Error('Artifact Version belongs to a different Session.')
-        }
-        const resolved = await artifactProvenanceRepository.resolveVersionContent(artifact)
-        return { path: resolved.path, filename: resolved.filename }
-      }
-      if (!parseUploadVersionReference(identity)) {
+      const upload = parseUploadVersionReference(identity)
+      if (!artifact && !upload) {
         throw new Error('Delegated input is not an immutable Version identity.')
       }
-      const resolved = await uploadRepository.resolveSessionUpload(
-        session.sessionId,
-        { path: identity },
-        session.projectId
+      const source = artifact ? 'artifact' : 'upload'
+      const projectId = artifact?.projectId ?? upload?.projectId
+      const sessionId = artifact?.appSessionId ?? upload?.sessionId
+      const fileId = artifact?.artifactId ?? upload?.fileId
+      const versionId = artifact?.versionId ?? upload?.versionId
+      if (
+        projectId !== session.projectId ||
+        sessionId !== session.sessionId ||
+        !fileId ||
+        !versionId
+      ) {
+        throw new Error('Managed Version input has incomplete or mismatched logical identity.')
+      }
+      const lease = await managedFileVersionService.openVersion(
+        { source, projectId, fileId },
+        versionId
       )
-      return { path: resolved.path, filename: resolved.name }
+      if (lease.logicalFile.sessionId !== session.sessionId) {
+        await lease.close().catch(() => undefined)
+        throw new Error('Managed Version belongs to a different Session.')
+      }
+      return {
+        path: lease.path,
+        filename: lease.logicalFile.displayName,
+        copyTo: (destinationPath: string) => lease.copyTo(destinationPath),
+        close: () => lease.close()
+      }
     },
     frameworks: delegatedFrameworks,
     resolveSpecialist: (profileId) => specialistService.resolveRunnableById(profileId),
@@ -2260,10 +2332,7 @@ const createApplicationModules = async (
   })
   const hostViewImageService = new HostViewImageService({
     catalog: projectFilesRepository,
-    resolvers: {
-      artifact: artifactProvenanceRepository,
-      upload: uploadRepository
-    },
+    managedFileVersions: managedFileVersionService,
     captureBackend: (sessionId) => {
       const backend = runtimeRef.current?.captureSessionBackend(sessionId)
       return backend
@@ -2534,7 +2603,14 @@ const createApplicationModules = async (
   declareElectronAdapter('desktop-utilities', () => {
     registerFileSaveHandlers({
       resolveManagedFilePath,
-      resolveSessionArtifactFilePath,
+      openLatestManagedFile: (source, request) =>
+        managedFileVersionService.openLatest({ source, ...request }),
+      openManagedFileVersion: (source, request) =>
+        managedFileVersionService.openVersion(
+          { source, projectId: request.projectId, fileId: request.fileId },
+          request.versionId
+        ),
+      openNotebookInput: (request) => notebookInputRegistry.openPreviewKey(request.path),
       translate
     })
     registerLogsIpcHandlers(logsCommandOwner)
@@ -2566,6 +2642,7 @@ const createApplicationModules = async (
       repository: artifactRepository,
       runRegistry: artifactRunRegistry,
       provenanceRepository: artifactProvenanceRepository,
+      managedFileVersions: managedFileVersionService,
       uploadRepository,
       notebookRpcServer,
       peekNotebookHandoffContext: (sessionId) => notebookService.peekHandoffContext(sessionId),
@@ -2751,9 +2828,12 @@ const createApplicationModules = async (
         createLogger('compute-job-deletion').error(
           'background deletion recovery failed; retry scheduled',
           diagnosticErrorFields(error)
-        )
+        ),
+      onStatusChanged: () =>
+        applicationEvents.publish(LIFECYCLE_CHANNELS.projectDeletionCleanupChanged, undefined)
     }
   )
+  projectDeletionCoordinator.setRecoveryLoop(projectDeletionRecovery)
   const removeProjectDeletionRecoveryWake = applicationEvents.subscribe((event) => {
     if (event.channel === 'project:deleted' && event.payload.status === 'cleanup-pending') {
       projectDeletionRecovery.wake()
@@ -2973,15 +3053,23 @@ const createApplicationModules = async (
       }
     },
     notebook: notebookService,
+    sideChat: {
+      shutdown: () => sideChatRuntime.shutdown(),
+      suspendAll: (options) => sideChatRuntime.suspendAll(options)
+    },
     log: createLogger('shutdown')
   })
   const durableBackendHandoffGate = createDurableInstallGate(
-    () => shutdownCoordinator.runForUpdateGate(UPDATE_SHUTDOWN_BUDGET_MS),
+    () =>
+      shutdownCoordinator.runForUpdateGate(UPDATE_SHUTDOWN_BUDGET_MS, {
+        holdSideChatAdmission: true
+      }),
     () => confirmRendererDurability()
   )
   const detectResearchBlockers = (): UpdateBlocker[] => {
     const blockers: UpdateBlocker[] = detectActiveSessions({
       runtime: { getActivePromptSessions: () => runtime.getQuitBlockingPromptSessions() },
+      sideChat: { getActivePromptSessions: getActiveSideChatSessions },
       delegated: { getActiveDelegatedSessions },
       notebook: notebookService
     }).map((session) => session.kind)
@@ -2995,7 +3083,10 @@ const createApplicationModules = async (
     createDurableInstallGate(
       createDataRootResearchSafeInstallGate(
         detectResearchBlockers,
-        () => shutdownCoordinator.runForUpdateGate(UPDATE_SHUTDOWN_BUDGET_MS),
+        () =>
+          shutdownCoordinator.runForUpdateGate(UPDATE_SHUTDOWN_BUDGET_MS, {
+            holdSideChatAdmission: true
+          }),
         confirmedInterruption
       ),
       async () => {
@@ -3011,14 +3102,21 @@ const createApplicationModules = async (
   // Construct update handling only after its backend-shutdown gate exists. The in-place strategy owns
   // this immutable dependency from construction; the manifest fallback ignores it because it does not
   // quit the running app to install.
+  const abortUpdateHandoff = (): void => {
+    try {
+      sideChatRuntime.resumeAfterHandoff()
+    } finally {
+      notifyRendererDurabilityAborted()
+    }
+  }
   const updateStrategy = createUpdateStrategy(process.platform, {
     translate,
     installGate: createActiveResearchSafeInstallGate(
       detectResearchBlockers,
       durableBackendHandoffGate,
-      () => isMigrationInProgress() || isMigrationPending(),
-      notifyRendererDurabilityAborted
-    )
+      () => isMigrationInProgress() || isMigrationPending()
+    ),
+    releaseInstallHandoff: abortUpdateHandoff
   })
   const updateCommandOwner = createUpdateCommandOwner(updateStrategy)
   let stopUpdateScheduler: (() => void) | undefined
@@ -3363,14 +3461,21 @@ const createApplicationModules = async (
       protocol
     )
   )
+  const toManagedPreviewRequest = (
+    request: OfficePreviewOpenRequest
+  ): AcquireManagedPreviewRequest =>
+    request.source === 'notebook-input'
+      ? { source: request.source, path: request.path }
+      : {
+          source: request.source,
+          projectId: request.projectId,
+          fileId: request.fileId,
+          ...(request.versionId ? { versionId: request.versionId } : {})
+        }
   const officePreviewSupervisor = new OfficePreviewSupervisor({
-    inspectResource: ({ source, path }) => previewResources.inspect({ source, path }),
+    inspectResource: (request) => previewResources.inspect(toManagedPreviewRequest(request)),
     acquireResource: (ownerId, request, snapshot, maxBytes) =>
-      previewResources.acquire(
-        ownerId,
-        { source: request.source, path: request.path },
-        { snapshot, maxBytes }
-      ),
+      previewResources.acquire(ownerId, toManagedPreviewRequest(request), { snapshot, maxBytes }),
     releaseResource: (ownerId, resourceId) => previewResources.release(ownerId, { resourceId }),
     createSessionId: randomUUID,
     createRuntimeUrl: createOfficePreviewRuntimeUrl,
@@ -3502,6 +3607,7 @@ const createApplicationModules = async (
     runtime,
     notebook: notebookService,
     getActivePromptSessions: () => runtime.getActivePromptSessions(),
+    getActiveSideChatSessions,
     getActiveDelegatedSessions,
     hasActiveReviewerWork: () => reviewerModelRuntimeShutdown?.hasActiveWork() ?? false,
     settingsService,
@@ -3509,14 +3615,24 @@ const createApplicationModules = async (
     acknowledgeWebRendererFlush: webSessionPersistenceFlush.acknowledge,
     notifyDataRootHandoffAborted: () => {
       try {
-        notifyRendererDurabilityAborted()
+        sideChatRuntime.resumeAfterHandoff()
       } finally {
-        webSessionPersistenceFlush.notifyAborted()
+        try {
+          notifyRendererDurabilityAborted()
+        } finally {
+          webSessionPersistenceFlush.notifyAborted()
+        }
       }
     },
     prepareDataRootHandoff: async (target, confirmedInterruption) => {
-      const readiness = await durableDataRootHandoffGate(target, confirmedInterruption)
-      return readiness.completed && readiness.reaped
+      let prepared = false
+      try {
+        const readiness = await durableDataRootHandoffGate(target, confirmedInterruption)
+        prepared = readiness.completed && readiness.reaped
+        return prepared
+      } finally {
+        if (!prepared) sideChatRuntime.resumeAfterHandoff()
+      }
     },
     cleanupJournal: dataRootCleanupJournal
   })
@@ -3526,6 +3642,7 @@ const createApplicationModules = async (
         runtime,
         notebook: notebookService,
         getActivePromptSessions: () => runtime.getActivePromptSessions(),
+        getActiveSideChatSessions,
         getActiveDelegatedSessions,
         hasActiveReviewerWork: () => reviewerModelRuntimeShutdown?.hasActiveWork() ?? false,
         settingsService
@@ -3537,6 +3654,17 @@ const createApplicationModules = async (
     getActiveArtifactRunIds: () =>
       runtimeRef.current ? runtimeRef.current.getActiveArtifactRunIds() : [],
     provenance: artifactProvenanceRepository,
+    openLatestManagedFile: (request) =>
+      managedFileVersionService.openLatest({
+        source: 'artifact',
+        projectId: request.projectId!,
+        fileId: request.fileId!
+      }),
+    openManagedFileVersion: (request) =>
+      managedFileVersionService.openVersion(
+        { source: 'artifact', projectId: request.projectId!, fileId: request.fileId! },
+        request.versionId
+      ),
     codeReconstruction,
     withSessionMutation: (projectId, sessionId, mutation) =>
       sessionPersistenceCoordinator.runSessionMutation(projectId, sessionId, mutation)
@@ -3631,6 +3759,9 @@ const createApplicationModules = async (
       projectFilesHandlers
     )
   )
+  declareElectronAdapter('managed-file-versions', () =>
+    registerManagedFileVersionIpcHandlers(managedFileVersionHandlers)
+  )
   // Backs the "This computer" browser; shares localFsService with the managed-preview resolver.
   declareElectronAdapter('local-fs', () => registerLocalFsIpcHandlers(localFsService))
   declareElectronAdapter('preview-state', () =>
@@ -3677,6 +3808,8 @@ const createApplicationModules = async (
     withProjectAvailable: <Result>(projectId: string, operation: () => Promise<Result>) =>
       archiveCoordinator.withProjectAvailable(projectId, operation),
     mcpEntryPath: mainEntryPath,
+    managedFileVersions: managedFileVersionService,
+    artifactCatalog: projectFilesRepository,
     artifactProvenanceRepository,
     pagedContentResolver: createReviewerPagedContentResolver({
       createWindow: () => {
@@ -3935,8 +4068,9 @@ const createApplicationModules = async (
     }
   }
 
-  // The shared coordinator remains the sole ACP + Notebook teardown owner. Register command routing
-  // after it so reverse disposal removes adapters, then the router, before any underlying owner stops.
+  // The shared coordinator remains the sole ACP + Notebook teardown owner.
+  // It also coordinates Side Chat suspension/shutdown. Register command routing after it so reverse
+  // disposal removes adapters, then the router, before any underlying owner stops.
   await modules.add({ shutdownCoordinator }, ({ shutdownCoordinator: coordinator }) => ({
     name: 'backend-shutdown-coordinator',
     capability: undefined,
@@ -3989,6 +4123,7 @@ const createApplicationModules = async (
     detectActiveSessions: () =>
       detectActiveSessions({
         runtime: { getActivePromptSessions: () => runtime.getQuitBlockingPromptSessions() },
+        sideChat: { getActivePromptSessions: getActiveSideChatSessions },
         delegated: { getActiveDelegatedSessions },
         notebook: notebookService
       }),

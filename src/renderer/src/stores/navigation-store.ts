@@ -4,6 +4,12 @@ import { recordLastOpenedProject } from '@/lib/last-opened-project'
 import type { CustomizeGoal } from '@/lib/customize-chat'
 
 import { useProjectStore } from './project-store'
+import {
+  dialogPreviewGuardScope,
+  previewLeaveGuards,
+  workbenchPreviewGuardScope
+} from './preview-leave-guard'
+import { usePreviewWorkbenchStore } from './preview-workbench-store'
 import { useSessionStore } from './session-store'
 import type { ProjectFileItem } from '../../../shared/project-files'
 
@@ -44,11 +50,14 @@ type NavigationStore = {
   artifactMentionAvailability: ArtifactMentionAvailability | undefined
   recordUserNavigation: () => void
   goHome: (origin: NavigationOrigin) => void
-  openProject: (projectId: string, origin: NavigationOrigin) => void
+  openProject: (projectId: string, origin: NavigationOrigin) => boolean
   openSession: (projectId: string, sessionId: string, origin: NavigationOrigin) => boolean
   // Opens a session knowing only its id (e.g. a desktop-notification click); a no-op when the
   // session no longer exists or hasn't loaded yet.
-  openSessionById: (sessionId: string, origin: NavigationOrigin) => void
+  openSessionById: (sessionId: string, origin: NavigationOrigin) => boolean
+  // Leaves a Workspace whose Project disappeared from the authoritative Project list. This recovery
+  // bypasses preview leave guards because the missing Project is no longer a valid editing scope.
+  discardInvalidProject: (projectId: string) => void
   // Opens a project's New Conversation draft (no Specialist binding) carrying a `/customize` prefill.
   // The intent does not send, create a session, or imply mutation approval; WorkspacePage consumes the
   // prefill once and clears it.
@@ -106,6 +115,31 @@ const isActiveSession = (projectId: string, sessionId: string): boolean =>
         session.archivedAt === undefined
     )
 
+const requestPreviewLeaveForNavigation = (
+  target: { view: NavigationView; projectId?: string },
+  action: () => void
+): boolean => {
+  const navigation = useNavigationStore.getState()
+  const staysInCurrentWorkspace =
+    navigation.view !== 'workspace' ||
+    (target.view === 'workspace' && target.projectId === navigation.activeProjectId)
+  if (staysInCurrentWorkspace) {
+    action()
+    return true
+  }
+
+  const preview = usePreviewWorkbenchStore.getState()
+  const dialogScope = dialogPreviewGuardScope(
+    preview.fileDialogItem?.projectId,
+    preview.fileDialogItem?.id
+  )
+  if (!previewLeaveGuards.request(dialogScope, () => undefined)) return false
+  const workbenchScope = workbenchPreviewGuardScope(preview.activeProjectId, preview.activeItemId)
+  if (!previewLeaveGuards.request(workbenchScope, () => undefined)) return false
+  action()
+  return true
+}
+
 // Owns which top-level screen is visible and which project the workspace is scoped to. Session
 // selection stays in the session store; this store coordinates it when navigating.
 export const useNavigationStore = create<NavigationStore>((set, get) => ({
@@ -127,24 +161,32 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     })),
 
   // Returns to the home screen without discarding session state.
-  goHome: (origin) => set((state) => navigationState(state, origin, { view: 'home' })),
+  goHome: (origin) => {
+    requestPreviewLeaveForNavigation({ view: 'home' }, () =>
+      set((state) => navigationState(state, origin, { view: 'home' }))
+    )
+  },
 
   // Enters a project's workspace, selecting its most recent session when one exists. An explicit user
   // open also records the durable last-opened project so `Chat with agent` re-opens it next time.
   openProject: (projectId, origin) => {
-    const mostRecentSessionId = findMostRecentSessionId(projectId)
+    if (!isActiveProject(projectId)) return false
+    return requestPreviewLeaveForNavigation({ view: 'workspace', projectId }, () => {
+      const mostRecentSessionId = findMostRecentSessionId(projectId)
 
-    if (mostRecentSessionId) {
-      useSessionStore.getState().selectSession(mostRecentSessionId)
-    } else {
-      useSessionStore.getState().clearSelection()
-    }
+      if (mostRecentSessionId) {
+        useSessionStore.getState().selectSession(mostRecentSessionId)
+      } else {
+        useSessionStore.getState().clearSelection()
+      }
 
-    if (origin === 'user') recordLastOpenedProject(projectId)
+      if (origin === 'user') recordLastOpenedProject(projectId)
 
-    set((state) =>
-      navigationState(state, origin, { view: 'workspace', activeProjectId: projectId })
-    )
+      set((state) =>
+        navigationState(state, origin, { view: 'workspace', activeProjectId: projectId })
+      )
+      usePreviewWorkbenchStore.getState().activateProject(projectId, undefined, true)
+    })
   },
 
   // Opens a specific session inside its project's workspace. Returns whether navigation happened,
@@ -152,14 +194,16 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
   // them when the guard rejects a vanished or archived session.
   openSession: (projectId, sessionId, origin) => {
     if (!isActiveSession(projectId, sessionId)) return false
-    useSessionStore.getState().selectSession(sessionId)
+    return requestPreviewLeaveForNavigation({ view: 'workspace', projectId }, () => {
+      useSessionStore.getState().selectSession(sessionId)
 
-    if (origin === 'user') recordLastOpenedProject(projectId)
+      if (origin === 'user') recordLastOpenedProject(projectId)
 
-    set((state) =>
-      navigationState(state, origin, { view: 'workspace', activeProjectId: projectId })
-    )
-    return true
+      set((state) =>
+        navigationState(state, origin, { view: 'workspace', activeProjectId: projectId })
+      )
+      usePreviewWorkbenchStore.getState().activateProject(projectId, undefined, true)
+    })
   },
 
   // Resolves the session's project from the session store, then navigates exactly like
@@ -170,8 +214,16 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       .getState()
       .sessions.find((candidate) => candidate.id === sessionId)
 
-    if (!session) return
-    get().openSession(session.projectId, session.id, origin)
+    if (!session) return false
+    return get().openSession(session.projectId, session.id, origin)
+  },
+
+  discardInvalidProject: (projectId) => {
+    const navigation = get()
+    if (navigation.view !== 'workspace' || navigation.activeProjectId !== projectId) return
+
+    useSessionStore.getState().clearSelection()
+    set({ view: 'home', activeProjectId: undefined })
   },
 
   // Opens a project's New Conversation draft carrying a `/customize` prefill. Clears session selection
@@ -180,33 +232,39 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
   // a session; it is a navigation/prefill intent only.
   startCustomizeConversation: (projectId, goal = 'specialist') => {
     if (!isActiveProject(projectId)) return
-    useSessionStore.getState().clearSelection()
-    recordLastOpenedProject(projectId)
+    requestPreviewLeaveForNavigation({ view: 'workspace', projectId }, () => {
+      useSessionStore.getState().clearSelection()
+      recordLastOpenedProject(projectId)
 
-    set((state) => {
-      const navigation = navigationState(state, 'user', {
-        view: 'workspace',
-        activeProjectId: projectId
-      })
-      return {
-        ...navigation,
-        pendingCustomizePrefill: {
-          projectId,
-          goal,
-          requestId: navigation.explicitNavigationRevision
+      set((state) => {
+        const navigation = navigationState(state, 'user', {
+          view: 'workspace',
+          activeProjectId: projectId
+        })
+        return {
+          ...navigation,
+          pendingCustomizePrefill: {
+            projectId,
+            goal,
+            requestId: navigation.explicitNavigationRevision
+          }
         }
-      }
+      })
+      usePreviewWorkbenchStore.getState().activateProject(projectId, undefined, true)
     })
   },
 
   // Clears the consumed prefill intent so a later normal open starts fresh.
   consumeCustomizePrefill: () => set({ pendingCustomizePrefill: undefined }),
 
-  requestProjectCreation: () =>
-    set((state) => ({
-      ...navigationState(state, 'user', { view: 'home' }),
-      pendingProjectCreation: true
-    })),
+  requestProjectCreation: () => {
+    requestPreviewLeaveForNavigation({ view: 'home' }, () =>
+      set((state) => ({
+        ...navigationState(state, 'user', { view: 'home' }),
+        pendingProjectCreation: true
+      }))
+    )
+  },
 
   consumeProjectCreation: () => set({ pendingProjectCreation: false }),
 
@@ -228,3 +286,18 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
   setArtifactMentionAvailability: (availability) =>
     set({ artifactMentionAvailability: availability })
 }))
+
+// Notification surfaces can appear before the startup Project query finishes. Wait for an
+// authoritative list before accepting or rejecting the target so a transient empty cache neither
+// loses a valid click nor consumes a notification for a deleted or archived Project.
+export const openNotificationProject = async (projectId: string): Promise<boolean> => {
+  const projectState = useProjectStore.getState()
+  if (!projectState.isLoaded || projectState.loadError !== undefined) {
+    await projectState.loadProjects()
+  }
+
+  const loadedProjectState = useProjectStore.getState()
+  if (!loadedProjectState.isLoaded || loadedProjectState.loadError !== undefined) return false
+
+  return useNavigationStore.getState().openProject(projectId, 'notification')
+}

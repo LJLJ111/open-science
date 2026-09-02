@@ -564,7 +564,11 @@ export type PersistedSessionResumeRecovery = {
 export type PersistedPendingHistoryReplay =
   { kind: 'all' } | { kind: 'before-message'; messageId: string }
 
-export type DelegationPolicy = 'allow' | 'deny'
+export const delegationPolicySchema = z.enum(['allow', 'deny'])
+export type DelegationPolicy = z.infer<typeof delegationPolicySchema>
+
+export const normalizeDelegationPolicy = (value: unknown): DelegationPolicy =>
+  value === 'deny' ? 'deny' : 'allow'
 
 export type PersistedToolActivityStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
 export type PersistedToolActivityDisposition = 'declined' | 'permission-closed'
@@ -841,8 +845,6 @@ export type SessionConflictRebaseField =
   | 'autoReviewEnabled'
   | 'memoryEnabled'
   | 'agentConfiguration'
-  | 'enabledComputeHosts'
-  | 'selectedComputeHosts'
   | 'pinned'
 
 export type SaveSessionOptions = {
@@ -3247,10 +3249,12 @@ const sanitizeMessagePart = (part: unknown): MessagePart | undefined => {
 
       const sanitized: MessagePart = { type: 'artifact', id, name, path, source }
       const versionId = asString(part.versionId)
+      const sourceFileId = asString(part.sourceFileId)
 
       return {
         ...sanitized,
         ...(mimeType ? { mimeType } : {}),
+        ...(sourceFileId ? { sourceFileId } : {}),
         ...(versionId ? { versionId } : {})
       }
     }
@@ -4053,7 +4057,7 @@ const sanitizeSession = (
     // previous enabled behavior. Only an explicit false opts this Session out.
     memoryEnabled: session.memoryEnabled === false ? false : true,
     // Only deny changes behavior; missing/malformed historical values preserve delegation.
-    delegationPolicy: session.delegationPolicy === 'deny' ? 'deny' : 'allow',
+    delegationPolicy: normalizeDelegationPolicy(session.delegationPolicy),
     messages: Array.isArray(session.messages)
       ? session.messages
           .map((message) => sanitizeMessage(message, options))
@@ -4386,10 +4390,9 @@ export const normalizeSessionFile = (
   return decoded.status === 'ok' ? decoded.session : undefined
 }
 
-// Tiny app-level pointer restoring the last-open project + session after a restart.
+// Tiny app-level pointer restoring the last-open Session after a restart.
 export type PersistedSessionManifest = {
   version: typeof SESSION_MANIFEST_VERSION
-  lastProjectId?: string
   lastSessionId?: string
 }
 
@@ -4403,10 +4406,8 @@ export const normalizeSessionManifest = (value: unknown): PersistedSessionManife
   if (!isRecord(value)) return createEmptySessionManifest()
 
   const manifest: PersistedSessionManifest = { version: SESSION_MANIFEST_VERSION }
-  const lastProjectId = asString(value.lastProjectId)
   const lastSessionId = asString(value.lastSessionId)
 
-  if (lastProjectId) manifest.lastProjectId = lastProjectId
   if (lastSessionId) manifest.lastSessionId = lastSessionId
 
   return manifest
@@ -4563,9 +4564,17 @@ export type UpdateSessionArchiveRequest = {
 }
 
 export type SaveSessionManifestRequest = {
-  lastProjectId?: string
   lastSessionId?: string
 }
+
+const persistedChatSessionResultSchema = z.custom<PersistedChatSession>(
+  (value) =>
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.projectId === 'string' &&
+    typeof value.title === 'string' &&
+    Array.isArray(value.messages)
+)
 
 // Runtime-validated contract for the Electron-facing terminal Session deletion command. The request
 // and result schemas double as the wire types so the router enforces exactly the union the
@@ -4593,15 +4602,10 @@ export const sessionApplicationCommandContracts = Object.freeze({
   ),
   editDetails: defineApplicationCommandContract(
     validationCodec(z.tuple([editSessionDetailsRequestSchema])),
-    validationCodec(
-      z.custom<PersistedChatSession>(
-        (value) =>
-          isRecord(value) &&
-          typeof value.id === 'string' &&
-          typeof value.projectId === 'string' &&
-          typeof value.title === 'string' &&
-          Array.isArray(value.messages)
-      )
-    )
+    validationCodec(persistedChatSessionResultSchema)
+  ),
+  setDelegationPolicy: defineApplicationCommandContract(
+    validationCodec(z.tuple([z.string(), z.string(), delegationPolicySchema])),
+    validationCodec(persistedChatSessionResultSchema)
   )
 })
