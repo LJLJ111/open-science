@@ -2534,3 +2534,43 @@ it('shows weighted overall import progress through checking, publication and suc
   )
   expect(bar()).toBeNull()
 })
+
+it('keeps a catalog download cancellable after leaving home and retains its manually opened dialog', async () => {
+  const download: PackageOperationSnapshot = {
+    id: 'catalog-download',
+    kind: 'import',
+    state: 'running',
+    progress: { phase: 'preparing' },
+    useCaseDownload: { slug: 'research', completedBytes: 35, totalBytes: 100 }
+  }
+  const request = vi.fn(async () => download)
+  vi.stubGlobal('api', {
+    sessions: { packageOperation: request, onPackageOperation: () => () => undefined }
+  })
+  useNavigationStore.setState({ view: 'home' })
+  usePackageOperationStore.getState().receive(download)
+  await act(async () =>
+    root.render(
+      <>
+        <PackageOperationIndicator />
+        <SessionPackageOperation />
+      </>
+    )
+  )
+  expect(document.body.textContent).not.toContain('Downloading 35%')
+  await act(async () => useNavigationStore.setState({ view: 'workspace' }))
+  expect(document.body.textContent).toContain('Downloading 35%')
+  await act(async () => button('View progress').click())
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  await act(async () =>
+    usePackageOperationStore.getState().receive({
+      ...download,
+      useCaseDownload: { ...download.useCaseDownload!, completedBytes: 40 }
+    })
+  )
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(document.body.textContent).toContain('Downloading 40%')
+  await act(async () => button('Cancel').click())
+  expect(request).toHaveBeenCalledWith({ action: 'cancel', operationId: 'catalog-download' })
+  useNavigationStore.setState({ view: 'home' })
+})

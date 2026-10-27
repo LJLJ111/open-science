@@ -1,16 +1,20 @@
+import type { UseCaseSource } from '../../../shared/use-cases'
 import { packageOperationActive, usePackageOperationStore } from '@/stores/package-operation-store'
 import { useProjectStore } from '@/stores/project-store'
 import { sessionPackageImportAvailable } from '@/lib/session-package-capabilities'
 
 let importing = false
 
-export const importSessionPackage = async (projectId?: string, file?: File): Promise<void> => {
+export const importSessionPackage = async (
+  projectId?: string,
+  file?: File | UseCaseSource
+): Promise<void> => {
   if (!sessionPackageImportAvailable()) return
   if (importing || packageOperationActive(usePackageOperationStore.getState().operation)) {
     usePackageOperationStore.getState().setOpen(true)
     return
   }
-  usePackageOperationStore.setState({ errorKind: undefined })
+  usePackageOperationStore.setState({ errorKind: undefined, useCaseFailure: undefined })
   importing = true
   usePackageOperationStore.getState().setImportError(undefined)
   const previousId = usePackageOperationStore.getState().operation?.id
@@ -33,8 +37,12 @@ export const importSessionPackage = async (projectId?: string, file?: File): Pro
     if (current?.id !== previousId && current?.kind === 'import') {
       if (current.state === 'failed') {
         store.receive(current)
-        if (store.dismissedId !== current.id) store.setOpen(true)
+        if (!current.useCaseDownload && store.dismissedId !== current.id) store.setOpen(true)
       }
+      return
+    }
+    if (file && 'useCase' in file) {
+      usePackageOperationStore.setState({ useCaseFailure: file.useCase })
       return
     }
     usePackageOperationStore

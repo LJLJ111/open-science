@@ -1,3 +1,4 @@
+import { UseCaseCatalog } from '../session-package/use-case-catalog'
 import { createSessionRecoveryFolderCommand } from '../session-persistence/ipc'
 import { createCompletionHandoffCommands } from '../agents/completion-handoff-ipc'
 import type { composeAgentCompletion } from './agent-completion'
@@ -133,6 +134,8 @@ export function composeCommandDependencies({
   reviewerCommandOwner: Awaited<ReturnType<typeof registerReviewerComposition>>
   listAppIconPreviews: (() => import('../../shared/settings').AppIconPreview[]) | undefined
 }): { applicationCommandDependencies: ApplicationCommandCompositionDependencies } {
+  const useCaseCatalog = new UseCaseCatalog(resolveConfigRoot())
+  void useCaseCatalog.refresh()
   const sessionReplay = new SessionReplayService(
     new SessionReplayRepository(() => getProjectDbClient(resolveConfigRoot())),
     {
@@ -250,6 +253,7 @@ export function composeCommandDependencies({
       clearAll: () => researchCatalog.memoryService.clearAll()
     },
     dataContent: {
+      useCaseCatalog,
       officePreviewCommands,
       fileSaveCommands,
       reproducibility: artifactSurfaces.reproducibilityCommands,
