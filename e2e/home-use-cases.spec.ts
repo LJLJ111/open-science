@@ -56,7 +56,8 @@ test('downloads on the card, retries and cancels, then imports verified bytes th
   const page = await app.completeOnboarding()
   await page.evaluate(() => window.api.locale.setPreference({ preference: 'en' }))
   const section = page.getByRole('region', { name: 'Use Case Gallery' })
-  const card = section.getByRole('article', { name: 'Example 1', exact: true })
+  await section.getByRole('button', { name: 'Next examples' }).click()
+  const card = section.getByRole('article', { name: 'Example 4', exact: true })
   await expect(
     section.getByRole('link', { name: 'Use Case Gallery', exact: true })
   ).toHaveAttribute('href', 'https://aipoch.com/open-science/use-cases')
@@ -118,6 +119,14 @@ test('downloads on the card, retries and cancels, then imports verified bytes th
   await expect(dialog.getByRole('status').filter({ hasText: /^Session imported$/ })).toBeVisible()
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Imported research history' })).toBeVisible()
+  await page.getByRole('button', { name: 'All projects', exact: true }).click()
+  await expect(section.getByRole('article')).toHaveCount(3)
+  expect(
+    await section
+      .getByRole('article')
+      .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
+  ).toEqual(['Example 4', 'Example 5', 'Example 6'])
+  expect(await card.evaluate((element) => element.parentElement!.getAnimations().length)).toBe(0)
 })
 
 test('refreshes the catalog once per launch and reuses the disk cache silently offline', async ({

@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { BookOpen } from 'lucide-react'
 
+import { loadedCovers } from './use-case-cover-cache'
+
 export const UseCaseCover = ({ src }: { src: string }): React.JSX.Element => {
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(() =>
+    loadedCovers.has(src) ? 'loaded' : 'loading'
+  )
   return (
     <>
       <div
@@ -25,8 +29,11 @@ export const UseCaseCover = ({ src }: { src: string }): React.JSX.Element => {
       <img
         src={src}
         alt=""
-        loading="lazy"
-        onLoad={() => setStatus('loaded')}
+        loading={loadedCovers.has(src) ? 'eager' : 'lazy'}
+        onLoad={() => {
+          loadedCovers.add(src)
+          setStatus('loaded')
+        }}
         onError={() => setStatus('error')}
         className={`relative h-full w-full object-contain transition-opacity duration-200 motion-reduce:transition-none ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`}
       />

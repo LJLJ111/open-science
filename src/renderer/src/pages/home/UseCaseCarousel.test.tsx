@@ -5,6 +5,7 @@ import { fireEvent, within } from '@testing-library/dom'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { parseUseCases } from '../../../../shared/use-cases'
 import { UseCaseCarousel } from './UseCaseCarousel'
+import { useUseCaseGalleryStore } from './use-case-gallery-store'
 import { usePackageOperationStore } from '@/stores/package-operation-store'
 
 let container: HTMLDivElement
@@ -16,6 +17,7 @@ const items = Array.from({ length: 7 }, (_, index) => ({
   case: { file_name: 'case.science', bytes: 3, sha256: 'a'.repeat(64) }
 }))
 beforeEach(() => {
+  useUseCaseGalleryStore.setState(useUseCaseGalleryStore.getInitialState(), true)
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   container = document.createElement('div')
   document.body.append(container)
@@ -190,4 +192,51 @@ it('changes the displayed order when a small catalog shuffles to the same order'
   } finally {
     random.mockRestore()
   }
+})
+
+it('restores the browsed cards immediately after returning, even while catalog requests are pending', async () => {
+  await render()
+  const ui = within(container)
+  await act(async () => fireEvent.click(ui.getByRole('button', { name: 'Next examples' })))
+  await act(async () => root.render(null))
+  vi.mocked(window.api.sessions.useCaseCatalog).mockImplementation(() => new Promise(() => {}))
+  await render()
+  expect(ui.getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([
+    'Case 4',
+    'Case 5',
+    'Case 6'
+  ])
+})
+
+it('restores a shuffled group and its paging position after returning', async () => {
+  await render()
+  const ui = within(container)
+  await act(async () => fireEvent.click(ui.getByRole('button', { name: 'Next examples' })))
+  await act(async () => fireEvent.click(ui.getByRole('button', { name: 'Random examples' })))
+  const selected = ui.getAllByRole('article').map((card) => card.getAttribute('aria-label'))
+  await act(async () => root.render(null))
+  await render()
+  expect(ui.getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(
+    selected
+  )
+  await act(async () => fireEvent.click(ui.getByRole('button', { name: 'Next examples' })))
+  expect(ui.getByText('Case 7')).toBeTruthy()
+})
+
+it('updates retained cards by identity and only replaces a removed slot when the catalog changes', async () => {
+  await render()
+  const ui = within(container)
+  await act(async () => fireEvent.click(ui.getByRole('button', { name: 'Next examples' })))
+  await act(async () => root.render(null))
+  const refreshed = [items[6], items[5], items[3], items[2], items[1], items[0]].map((item) => ({
+    ...item,
+    title: item.title + ' updated'
+  }))
+  vi.mocked(window.api.sessions.useCaseCatalog).mockResolvedValue(parseUseCases(refreshed))
+  await render()
+  expect(ui.getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual([
+    'Case 4 updated',
+    'Case 7 updated',
+    'Case 6 updated'
+  ])
 })

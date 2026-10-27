@@ -3,7 +3,10 @@ import '@/assets/main.css'
 import { createRoot } from 'react-dom/client'
 import { initI18n, prepareI18nLocale } from '@/i18n'
 import { HomePage } from '@/pages/home/HomePage'
-import { SessionPackageOperation } from '@/components/SessionPackageOperation'
+import {
+  SessionPackageOperation,
+  PackageOperationIndicator
+} from '@/components/SessionPackageOperation'
 import { useProjectStore } from '@/stores/project-store'
 import { useSessionStore } from '@/stores/session-store'
 import { useNavigationStore } from '@/stores/navigation-store'
@@ -136,7 +139,14 @@ export const Fixture = (): React.JSX.Element => {
   const projectId = useNavigationStore((state) => state.activeProjectId)
   return (
     <>
-      <HomePage canDeleteProjects hasCompleteSessionCatalog onOpenGlobalSearch={noop} />
+      {view === 'home' ? (
+        <HomePage canDeleteProjects hasCompleteSessionCatalog onOpenGlobalSearch={noop} />
+      ) : (
+        <>
+          <button onClick={() => useNavigationStore.getState().goHome('user')}>Back to Home</button>
+          <PackageOperationIndicator />
+        </>
+      )}
       <SessionPackageOperation />
       <output data-testid="navigation">
         {view}:{projectId}

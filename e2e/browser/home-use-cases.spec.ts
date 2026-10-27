@@ -40,13 +40,21 @@ test('cycles three cards, reveals actions on hover and keyboard focus, and remai
   await expect(first.getByRole('link')).toBeFocused()
   await expect(actions).toHaveCSS('opacity', '1')
   await section.getByRole('button', { name: 'Next examples' }).click()
-  await expect(section.getByText('Research example 4')).toBeVisible()
+  await expect(
+    section.getByRole('article', { name: 'Research example 4', exact: true })
+  ).toBeVisible()
   await section.getByRole('button', { name: 'Next examples' }).click()
-  await expect(section.getByText('Research example 7')).toBeVisible()
+  await expect(
+    section.getByRole('article', { name: 'Research example 7', exact: true })
+  ).toBeVisible()
   await section.getByRole('button', { name: 'Next examples' }).click()
-  await expect(section.getByText('Research example 1')).toBeVisible()
+  await expect(
+    section.getByRole('article', { name: 'Research example 1', exact: true })
+  ).toBeVisible()
   await section.getByRole('button', { name: 'Previous examples' }).click()
-  await expect(section.getByText('Research example 7')).toBeVisible()
+  await expect(
+    section.getByRole('article', { name: 'Research example 7', exact: true })
+  ).toBeVisible()
   await page.setViewportSize({ width: 720, height: 500 })
   await section.scrollIntoViewIfNeeded()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -105,6 +113,23 @@ test('contains long titles within two complete lines without clipping a third li
 for (const destination of ['existing', 'new'])
   test(`imports using the ${destination} project flow and opens the session`, async ({ page }) => {
     await page.goto('/home-use-cases.html')
+    await page.getByRole('button', { name: 'Next examples' }).click()
+    if (destination === 'new') {
+      const oldNames = await page
+        .getByRole('article')
+        .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
+      await page.getByRole('button', { name: 'Random examples' }).click()
+      await expect
+        .poll(() =>
+          page
+            .getByRole('article')
+            .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
+        )
+        .not.toEqual(oldNames)
+    }
+    const selected = await page
+      .getByRole('article')
+      .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
     const first = page.getByRole('article').first()
     await first.hover()
     await first.getByRole('button', { name: 'Import', exact: true }).click()
@@ -118,6 +143,25 @@ for (const destination of ['existing', 'new'])
     await dialog.getByRole('button', { name: 'Import', exact: true }).click()
     await expect(page.getByTestId('navigation')).toHaveText(
       `workspace:${destination === 'new' ? 'new-project' : 'research'}`
+    )
+    await expect(page.getByRole('article')).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+    await page.getByRole('button', { name: 'Back to Home' }).click()
+    expect(
+      await page
+        .getByRole('article')
+        .evaluateAll((cards) => cards.map((card) => card.getAttribute('aria-label')))
+    ).toEqual(selected)
+    expect(
+      await page
+        .getByRole('article')
+        .first()
+        .evaluate((card) => card.parentElement!.getAnimations().length)
+    ).toBe(0)
+    await page.getByRole('button', { name: 'Next examples' }).click()
+    await expect(page.getByRole('article').first()).toHaveAttribute(
+      'aria-label',
+      'Research example 7'
     )
   })
 
@@ -222,12 +266,14 @@ test('centers the gallery arrow and chooses three distinct cases without another
   expect(requests).toBe(1)
 })
 
-test('random selection fades out then deals cards in place, with no horizontal travel', async ({
+test('random selection keeps an opaque previous group beneath the incoming cards', async ({
   page
 }) => {
   await page.goto('/home-use-cases.html')
   const section = page.getByRole('region', { name: 'Use Case Gallery' })
   await expect(section.getByRole('article')).toHaveCount(3)
+  for (const image of await section.locator('img').all())
+    await expect(image).toHaveCSS('opacity', '1')
   const feedback = await section
     .getByRole('button', { name: 'Random examples' })
     .evaluate((button) => {
@@ -272,44 +318,50 @@ test('random selection fades out then deals cards in place, with no horizontal t
   expect(feedback.staggered).toBe(true)
   expect(feedback.flipsOnce).toBe(true)
   expect(feedback.buttonStable).toBe(true)
-  expect(feedback.gridExit).toBe(true)
+  expect(feedback.gridExit).toBe(false)
   await expect
     .poll(
       () =>
-        section.getByRole('article').evaluateAll((cards) => {
-          const animations = cards.map((card) => card.getAnimations()[0])
-          if (animations.every(Boolean)) animations.forEach((animation) => animation.pause())
-          return animations.filter(Boolean).length
-        }),
-      { intervals: [10, 20, 40] }
+        section
+          .getByRole('article')
+          .first()
+          .evaluate((card) => {
+            const animation = card.parentElement!.getAnimations()[0]
+            if (!animation) return false
+            animation.pause()
+            animation.currentTime = 80
+            return true
+          }),
+      { intervals: [10, 20] }
     )
-    .toBe(3)
-  expect(
-    await section
-      .getByRole('article')
-      .first()
-      .evaluate((card) => new DOMMatrixReadOnly(getComputedStyle(card.parentElement!).transform).e)
-  ).toBe(0)
-  const frames = await section.getByRole('article').evaluateAll((cards) =>
-    cards.map((card) => {
-      const animation = card.getAnimations()[0]
-      animation.pause()
-      animation.currentTime = 40
-      const style = getComputedStyle(card)
-      const matrix = new DOMMatrixReadOnly(style.transform)
-      return {
-        opacity: Number(style.opacity),
-        scale: matrix.a,
-        x: matrix.e,
-        delay: Number(animation.effect!.getTiming().delay)
-      }
-    })
-  )
-  expect(frames.every((frame) => frame.x === 0)).toBe(true)
-  expect(frames[0].opacity).toBeGreaterThan(frames[1].opacity)
-  expect(frames[1].delay).toBeLessThan(frames[2].delay)
-  expect(frames[0].scale).toBeLessThan(1)
-  expect(frames[2].delay).toBeLessThanOrEqual(100)
+    .toBe(true)
+  const frame = await section.evaluate((element) => {
+    const outgoing = element.querySelector<HTMLElement>('[inert][aria-hidden="true"]')!
+    const incoming = Array.from(element.querySelectorAll('article')).find(
+      (card) => !card.closest('[inert]')
+    )!.parentElement!
+    const style = getComputedStyle(incoming)
+    return {
+      outgoingOpacity: Number(getComputedStyle(outgoing).opacity),
+      incomingOpacity: Number(style.opacity),
+      x: new DOMMatrixReadOnly(style.transform).e,
+      readyImages: Array.from(incoming.querySelectorAll('img')).every(
+        (img) => img.complete && img.naturalWidth > 0 && getComputedStyle(img).opacity === '1'
+      )
+    }
+  })
+  expect(frame.outgoingOpacity).toBe(1)
+  expect(frame.incomingOpacity).toBeGreaterThan(0)
+  expect(frame.incomingOpacity).toBeLessThan(1)
+  expect(frame.x).toBe(0)
+  expect(frame.readyImages).toBe(true)
+  await section
+    .getByRole('article')
+    .first()
+    .evaluate((card) =>
+      card.parentElement!.getAnimations().forEach((animation) => animation.finish())
+    )
+  await expect(section.locator('[inert][aria-hidden="true"]')).toHaveCount(0)
 })
 
 test('random switching remains immediate with reduced motion and rapid navigation keeps the last action', async ({
@@ -404,4 +456,72 @@ test('keeps the download accessible from project navigation and cancels through 
   await expect(dialog).toContainText('Downloading 35%')
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(card.getByRole('progressbar')).toHaveCount(0)
+})
+
+test('keeps the current group visible during cover preparation and lets later paging win', async ({
+  page
+}) => {
+  await page.goto('/home-use-cases.html')
+  await expect(page.getByRole('article')).toHaveCount(3)
+  await page.evaluate(() => {
+    Math.random = () => 0.999
+  })
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let requested = false
+  await page.route('**/case-4/cover.svg', async (route) => {
+    requested = true
+    await held
+    await route.abort()
+  })
+  try {
+    await page.getByRole('button', { name: 'Random examples' }).click()
+    await expect.poll(() => requested).toBe(true)
+    await expect(page.getByRole('article').nth(2)).toHaveAttribute(
+      'aria-label',
+      'Research example 3'
+    )
+    await expect(page.getByRole('article').first().locator('..')).toHaveCSS('opacity', '1')
+    await page.getByRole('button', { name: 'Next examples' }).click()
+    release()
+    await expect(page.getByRole('article').first()).toHaveAttribute(
+      'aria-label',
+      'Research example 4'
+    )
+    await expect(page.getByRole('article').nth(2)).toHaveAttribute(
+      'aria-label',
+      'Research example 6'
+    )
+    await expect(page.getByRole('article').first().locator('img')).toHaveCSS('opacity', '0')
+  } finally {
+    release()
+  }
+})
+
+test('finishes a shuffle with a placeholder when cover preparation times out', async ({ page }) => {
+  await page.goto('/home-use-cases.html')
+  await expect(page.getByRole('article')).toHaveCount(3)
+  await page.evaluate(() => {
+    Math.random = () => 0.999
+  })
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/case-4/cover.svg', async (route) => {
+    await held
+    await route.abort()
+  })
+  try {
+    await page.getByRole('button', { name: 'Random examples' }).click()
+    const card = page.getByRole('article').nth(2)
+    await expect(card).toHaveAttribute('aria-label', 'Research example 4', { timeout: 3000 })
+    await expect(card.locator('img')).toHaveCSS('opacity', '0')
+    release()
+    await expect(card.locator('.animate-pulse')).toHaveCount(0)
+  } finally {
+    release()
+  }
 })

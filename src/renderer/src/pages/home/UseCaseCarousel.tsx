@@ -14,19 +14,20 @@ import { importSessionPackage } from '@/lib/session-package-import'
 import { sessionPackageImportAvailable } from '@/lib/session-package-capabilities'
 import { packageOperationActive, usePackageOperationStore } from '@/stores/package-operation-store'
 import { UseCaseCover } from './UseCaseCover'
+import { preloadUseCaseCovers } from './use-case-cover-cache'
+import { useUseCaseGalleryStore } from './use-case-gallery-store'
 import type { UseCase } from '../../../../shared/use-cases'
 
 export const UseCaseCarousel = (): React.JSX.Element | null => {
   const { t } = useTranslation()
   const headingId = useId()
-  const [items, setItems] = useState<UseCase[]>()
-  const [randomSlugs, setRandomSlugs] = useState<string[]>()
-  const [page, setPage] = useState(0)
-  const [transition, setTransition] = useState<'random' | 'previous' | 'next'>('next')
+  const { items, slugs, page, receive, select } = useUseCaseGalleryStore()
+  const [transition, setTransition] = useState<'random' | 'previous' | 'next'>('random')
+  const [previous, setPrevious] = useState<UseCase[]>()
   const gridRef = useRef<HTMLDivElement>(null)
   const randomIconRef = useRef<SVGSVGElement>(null)
-  const outgoingRef = useRef<Animation | undefined>(undefined)
-  useEffect(() => () => outgoingRef.current?.cancel(), [])
+  const preparationRef = useRef<AbortController | undefined>(undefined)
+  useEffect(() => () => preparationRef.current?.abort(), [])
   const [pending, setPending] = useState<string>()
   const operation = usePackageOperationStore((state) => state.operation)
   const useCaseFailure = usePackageOperationStore((state) => state.useCaseFailure)
@@ -49,9 +50,9 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
     const load = async (): Promise<void> => {
       try {
         const cached = await window.api.sessions.useCaseCatalog('cached')
-        if (active) setItems(cached)
+        if (active && !useUseCaseGalleryStore.getState().items) receive(cached)
         const refreshed = await window.api.sessions.useCaseCatalog('refreshed')
-        if (active) setItems(refreshed)
+        if (active) receive(refreshed)
       } catch {
         // Keep the cached list when the application transport is temporarily unavailable.
       }
@@ -60,7 +61,7 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
     return () => {
       active = false
     }
-  }, [])
+  }, [receive])
 
   const importExample = async (item: UseCase): Promise<void> => {
     if (pending || operationActive) return
@@ -72,35 +73,48 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
       setPending(undefined)
     }
   }
-  const visible =
-    randomSlugs && items && randomSlugs.every((slug) => items.some((item) => item.slug === slug))
-      ? randomSlugs.map((slug) => items.find((item) => item.slug === slug)!)
-      : items?.length
-        ? Array.from(
-            { length: Math.min(3, items.length) },
-            (_, index) => items[((page % pages) * 3 + index) % items.length]
-          )
-        : []
+  const visible = slugs.flatMap((slug) => {
+    const item = items?.find((item) => item.slug === slug)
+    return item ? [item] : []
+  })
   const visibleKey = visible.map((item) => item.slug).join(',')
   useLayoutEffect(() => {
     const grid = gridRef.current
-    if (
-      transition !== 'random' ||
-      !grid?.animate ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    )
+    if (!previous) return
+    if (!grid?.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setPrevious(undefined)
       return
-    const animations = Array.from(grid.children).map((card, index) =>
-      card.animate(
-        [
-          { opacity: 0, transform: 'scale(0.97)' },
-          { opacity: 1, transform: 'scale(1)' }
-        ],
-        { duration: 110, delay: index * 40, easing: 'ease-out', fill: 'backwards' }
-      )
+    }
+    // Leave the old group opaque underneath until the new cards fully cover it.
+    const offset = transition === 'random' ? 0 : transition === 'previous' ? -6 : 6
+    const animation = grid.animate(
+      [
+        { opacity: 0, transform: `translateX(${offset}px)` },
+        { opacity: 1, transform: 'translateX(0)' }
+      ],
+      { duration: 180, easing: 'ease-out' }
     )
-    return () => animations.forEach((animation) => animation.cancel())
-  }, [visibleKey, transition])
+    void animation.finished.then(
+      () => setPrevious(undefined),
+      () => {}
+    )
+    return () => animation.cancel()
+  }, [visibleKey, transition, previous])
+
+  const changePage = (direction: 'previous' | 'next'): void => {
+    if (!items?.length) return
+    preparationRef.current?.abort()
+    const nextPage = (page + (direction === 'next' ? 1 : pages - 1)) % pages
+    setTransition(direction)
+    setPrevious(visible)
+    select(
+      Array.from(
+        { length: Math.min(3, items.length) },
+        (_, index) => items[(nextPage * 3 + index) % items.length].slug
+      ),
+      nextPage
+    )
+  }
 
   const randomize = async (): Promise<void> => {
     if (!items?.length) return
@@ -118,7 +132,9 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
     } else if (next.length > 1 && next.every((item, index) => item.slug === visible[index]?.slug)) {
       next.push(next.shift()!)
     }
-    outgoingRef.current?.cancel()
+    preparationRef.current?.abort()
+    const preparation = new AbortController()
+    preparationRef.current = preparation
     const grid = gridRef.current
     if (grid?.animate && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       const icon = randomIconRef.current
@@ -141,21 +157,173 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
           )
         )
       )
-      const outgoing = grid.animate([{ opacity: 1 }, { opacity: 0 }], {
-        duration: 60,
-        easing: 'ease-in'
-      })
-      outgoingRef.current = outgoing
-      try {
-        await outgoing.finished
-      } catch {
-        return
-      }
-      outgoingRef.current = undefined
     }
+    await preloadUseCaseCovers(
+      next.map((item) => item.imageUrl),
+      preparation.signal
+    )
+    if (preparation.signal.aborted) return
+    // Reconcile again if a background refresh removed a candidate during image preparation.
+    const latest = useUseCaseGalleryStore.getState().items ?? []
+    const selected = next.filter((item) => latest.some((entry) => entry.slug === item.slug))
+    for (const item of latest) {
+      if (selected.length >= Math.min(3, latest.length)) break
+      if (!selected.some((entry) => entry.slug === item.slug)) selected.push(item)
+    }
+    setPrevious(visible)
     setTransition('random')
-    setRandomSlugs(next.map((item) => item.slug))
+    select(
+      selected.map((item) => item.slug),
+      page
+    )
   }
+
+  const renderCards = (cases: UseCase[]): React.JSX.Element[] =>
+    cases.map((item) => {
+      const download =
+        operation?.useCaseDownload?.slug === item.slug ? operation.useCaseDownload : undefined
+      const downloading = Boolean(download && operationActive)
+      const ownsOperation =
+        operation?.kind === 'import' &&
+        operationActive &&
+        (useCaseSlug === item.slug || pending === item.slug)
+      const waiting = ownsOperation && !download && operation?.state === 'awaiting-selection'
+      const importing = ownsOperation || downloading || pending === item.slug
+      const busy = importing && !waiting
+      const downloadFailed =
+        (download && operation?.state === 'failed') || useCaseFailure === item.slug
+      const percent = download?.totalBytes
+        ? Math.min(100, Math.floor((download.completedBytes / download.totalBytes) * 100))
+        : 0
+      const progressLabel = download?.totalBytes
+        ? percent === 100
+          ? t('Verifying download…')
+          : t('Downloading {{percent}}%', { percent })
+        : t('Preparing download…')
+      return (
+        <article
+          key={item.slug}
+          aria-label={item.title}
+          className="group relative min-w-0 overflow-hidden rounded-xl border border-border bg-bg-000"
+        >
+          <div className="relative aspect-[16/9] overflow-hidden bg-bg-100">
+            <UseCaseCover key={item.imageUrl} src={item.imageUrl} />
+            {/* Active imports retain their actions independently of hover or pointer focus. */}
+            <div
+              data-active={importing || undefined}
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/40 p-2 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[active=true]:opacity-100 [@media(hover:none)]:opacity-100 sm:flex-row"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 cursor-pointer gap-1 rounded-md px-3 text-xs"
+                asChild
+              >
+                <a
+                  href={`https://aipoch.com/open-science/use-cases/${item.slug}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                  {t('Details')}
+                </a>
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                className="h-8 gap-1 rounded-md px-3 text-xs hover:bg-[color-mix(in_oklch,var(--primary),black_10%)] aria-busy:disabled:opacity-100"
+                aria-busy={busy}
+                disabled={
+                  !waiting &&
+                  (Boolean(pending) || operationActive || !sessionPackageImportAvailable())
+                }
+                onClick={() =>
+                  waiting
+                    ? usePackageOperationStore.getState().setOpen(true)
+                    : void importExample(item)
+                }
+              >
+                {busy ? (
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
+                ) : waiting ? (
+                  <ChevronRight className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <Download className="size-3.5" aria-hidden="true" />
+                )}
+                {waiting ? t('Continue') : t('Import')}
+              </Button>
+            </div>
+            {/* Transient status overlays the cover so every card keeps its original size. */}
+            {downloading && (
+              <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-2 bg-background/95 pr-3 text-xs sm:pr-4">
+                <div className="relative flex h-9 min-w-0 flex-1 items-center overflow-hidden px-3 sm:px-4">
+                  <div
+                    role="progressbar"
+                    aria-label={t('Example download progress')}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={download?.totalBytes ? percent : undefined}
+                    aria-valuetext={progressLabel}
+                    className="pointer-events-none absolute inset-0"
+                  >
+                    <span
+                      style={{ transform: `scaleX(${percent / 100})` }}
+                      className="block h-full w-full origin-left bg-primary/25 transition-transform duration-150 ease-linear motion-reduce:transition-none"
+                    />
+                  </div>
+                  <span role="status" className="relative tabular-nums text-text-100">
+                    {operation?.state === 'cancelling' ? t('Cancelling…') : progressLabel}
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-status-warning-foreground hover:bg-status-warning-surface hover:text-status-warning-foreground dark:text-status-warning-dark-foreground dark:hover:bg-status-warning-dark-surface dark:hover:text-status-warning-dark-foreground"
+                  disabled={operation?.state === 'cancelling'}
+                  onClick={() => void cancelDownload()}
+                >
+                  {t('Cancel')}
+                </Button>
+              </div>
+            )}
+            {(downloadFailed || (downloading && cancelFailed)) && (
+              <div
+                className={`absolute inset-0 z-10 overflow-auto bg-background/95 p-3 sm:p-4 ${downloading ? 'pb-14' : ''}`}
+              >
+                <ErrorNotice
+                  inline
+                  role="alert"
+                  tone="amber"
+                  description={
+                    cancelFailed && downloading
+                      ? t('Could not cancel download. Try again.')
+                      : t('Could not download this example. Try again.')
+                  }
+                  primaryButton={
+                    downloadFailed
+                      ? {
+                          label: t('Try again'),
+                          disabled: Boolean(pending) || operationActive,
+                          onClick: () => void importExample(item)
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            )}
+          </div>
+          {/* Keep padding outside the clamped text so a third line cannot bleed into it. */}
+          <div className="h-16 px-3 py-3 sm:px-4">
+            <h3
+              title={item.title}
+              className="line-clamp-2 font-serif text-sm leading-5 text-text-000 [overflow-wrap:anywhere] sm:text-base sm:leading-5"
+            >
+              {item.title}
+            </h3>
+          </div>
+        </article>
+      )
+    })
 
   if (!items?.length) return null
 
@@ -192,12 +360,7 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
             size="icon"
             aria-label={t('Previous examples')}
             disabled={pages < 2}
-            onClick={() => {
-              outgoingRef.current?.cancel()
-              setTransition('previous')
-              setRandomSlugs(undefined)
-              setPage((page + pages - 1) % pages)
-            }}
+            onClick={() => changePage('previous')}
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
           </Button>
@@ -206,167 +369,25 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
             size="icon"
             aria-label={t('Next examples')}
             disabled={pages < 2}
-            onClick={() => {
-              outgoingRef.current?.cancel()
-              setTransition('next')
-              setRandomSlugs(undefined)
-              setPage((page + 1) % pages)
-            }}
+            onClick={() => changePage('next')}
           >
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
-      <div
-        key={visibleKey}
-        ref={gridRef}
-        className={`grid grid-cols-3 gap-3 sm:gap-5 ${transition === 'random' ? '' : `motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200 ${transition === 'previous' ? 'motion-safe:slide-in-from-left-2' : 'motion-safe:slide-in-from-right-2'}`}`}
-      >
-        {visible.map((item) => {
-          const download =
-            operation?.useCaseDownload?.slug === item.slug ? operation.useCaseDownload : undefined
-          const downloading = Boolean(download && operationActive)
-          const ownsOperation =
-            operation?.kind === 'import' &&
-            operationActive &&
-            (useCaseSlug === item.slug || pending === item.slug)
-          const waiting = ownsOperation && !download && operation?.state === 'awaiting-selection'
-          const importing = ownsOperation || downloading || pending === item.slug
-          const busy = importing && !waiting
-          const downloadFailed =
-            (download && operation?.state === 'failed') || useCaseFailure === item.slug
-          const percent = download?.totalBytes
-            ? Math.min(100, Math.floor((download.completedBytes / download.totalBytes) * 100))
-            : 0
-          const progressLabel = download?.totalBytes
-            ? percent === 100
-              ? t('Verifying download…')
-              : t('Downloading {{percent}}%', { percent })
-            : t('Preparing download…')
-          return (
-            <article
-              key={item.slug}
-              aria-label={item.title}
-              className="group relative min-w-0 overflow-hidden rounded-xl border border-border bg-bg-000"
-            >
-              <div className="relative aspect-[16/9] overflow-hidden bg-bg-100">
-                <UseCaseCover key={item.imageUrl} src={item.imageUrl} />
-                {/* Active imports retain their actions independently of hover or pointer focus. */}
-                <div
-                  data-active={importing || undefined}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/40 p-2 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 data-[active=true]:opacity-100 [@media(hover:none)]:opacity-100 sm:flex-row"
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 cursor-pointer gap-1 rounded-md px-3 text-xs"
-                    asChild
-                  >
-                    <a
-                      href={`https://aipoch.com/open-science/use-cases/${item.slug}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                      {t('Details')}
-                    </a>
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-8 gap-1 rounded-md px-3 text-xs hover:bg-[color-mix(in_oklch,var(--primary),black_10%)] aria-busy:disabled:opacity-100"
-                    aria-busy={busy}
-                    disabled={
-                      !waiting &&
-                      (Boolean(pending) || operationActive || !sessionPackageImportAvailable())
-                    }
-                    onClick={() =>
-                      waiting
-                        ? usePackageOperationStore.getState().setOpen(true)
-                        : void importExample(item)
-                    }
-                  >
-                    {busy ? (
-                      <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" />
-                    ) : waiting ? (
-                      <ChevronRight className="size-3.5" aria-hidden="true" />
-                    ) : (
-                      <Download className="size-3.5" aria-hidden="true" />
-                    )}
-                    {waiting ? t('Continue') : t('Import')}
-                  </Button>
-                </div>
-                {/* Transient status overlays the cover so every card keeps its original size. */}
-                {downloading && (
-                  <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-2 bg-background/95 pr-3 text-xs sm:pr-4">
-                    <div className="relative flex h-9 min-w-0 flex-1 items-center overflow-hidden px-3 sm:px-4">
-                      <div
-                        role="progressbar"
-                        aria-label={t('Example download progress')}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={download?.totalBytes ? percent : undefined}
-                        aria-valuetext={progressLabel}
-                        className="pointer-events-none absolute inset-0"
-                      >
-                        <span
-                          style={{ transform: `scaleX(${percent / 100})` }}
-                          className="block h-full w-full origin-left bg-primary/25 transition-transform duration-150 ease-linear motion-reduce:transition-none"
-                        />
-                      </div>
-                      <span role="status" className="relative tabular-nums text-text-100">
-                        {operation?.state === 'cancelling' ? t('Cancelling…') : progressLabel}
-                      </span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-status-warning-foreground hover:bg-status-warning-surface hover:text-status-warning-foreground dark:text-status-warning-dark-foreground dark:hover:bg-status-warning-dark-surface dark:hover:text-status-warning-dark-foreground"
-                      disabled={operation?.state === 'cancelling'}
-                      onClick={() => void cancelDownload()}
-                    >
-                      {t('Cancel')}
-                    </Button>
-                  </div>
-                )}
-                {(downloadFailed || (downloading && cancelFailed)) && (
-                  <div
-                    className={`absolute inset-0 z-10 overflow-auto bg-background/95 p-3 sm:p-4 ${downloading ? 'pb-14' : ''}`}
-                  >
-                    <ErrorNotice
-                      inline
-                      role="alert"
-                      tone="amber"
-                      description={
-                        cancelFailed && downloading
-                          ? t('Could not cancel download. Try again.')
-                          : t('Could not download this example. Try again.')
-                      }
-                      primaryButton={
-                        downloadFailed
-                          ? {
-                              label: t('Try again'),
-                              disabled: Boolean(pending) || operationActive,
-                              onClick: () => void importExample(item)
-                            }
-                          : undefined
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-              {/* Keep padding outside the clamped text so a third line cannot bleed into it. */}
-              <div className="h-16 px-3 py-3 sm:px-4">
-                <h3
-                  title={item.title}
-                  className="line-clamp-2 font-serif text-sm leading-5 text-text-000 [overflow-wrap:anywhere] sm:text-base sm:leading-5"
-                >
-                  {item.title}
-                </h3>
-              </div>
-            </article>
-          )
-        })}
+      <div className="relative">
+        {previous && (
+          <div
+            aria-hidden="true"
+            inert
+            className="pointer-events-none absolute inset-x-0 top-0 grid grid-cols-3 gap-3 sm:gap-5"
+          >
+            {renderCards(previous)}
+          </div>
+        )}
+        <div ref={gridRef} className="relative grid grid-cols-3 gap-3 sm:gap-5">
+          {renderCards(visible)}
+        </div>
       </div>
     </section>
   )
