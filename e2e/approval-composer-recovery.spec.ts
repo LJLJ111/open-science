@@ -16,29 +16,21 @@ for (const status of ['waiting-permission', 'waiting-for-user'] as const) {
       page.getByText('Deterministic reply: Summarize the deterministic fixture.', { exact: true })
     ).toBeVisible()
     const saved = await page.evaluate(async () => (await window.api.sessions.loadAll()).sessions[0])
-    const session = {
-      ...saved,
-      id: 'missing-request',
-      title: 'Missing request',
-      conversationGraph: undefined,
-      runtimeContext: undefined,
-      activeRun: undefined
-    }
     const application = (app as unknown as { application: ElectronApplication }).application
-    const inject = async (nextStatus: typeof status | 'idle', revision: number): Promise<void> => {
-      await application.evaluate(
-        ({ BrowserWindow }, updated) => {
-          BrowserWindow.getAllWindows()[0].webContents.send('session:updated', {
-            session: updated,
-            originClientId:
-              updated.status === 'idle' ? 'main:permission-wait' : 'test:missing-request'
-          })
-        },
-        { ...session, status: nextStatus, revision, updatedAt: Date.now() }
-      )
-    }
-    await inject(status, (session.revision ?? 0) + 100)
-    await page.locator('[data-session-id="missing-request"]').first().click()
+    // Rehydrate only the renderer with a stale wait; the real persisted Session and runtime
+    // remain attached. Recovery must come from Stop, never from a test-injected idle event.
+    await application.evaluate(
+      ({ BrowserWindow }, { saved, status }) => {
+        const contents = BrowserWindow.getAllWindows()[0].webContents
+        contents.send('session:deleted', { projectId: saved.projectId, sessionId: saved.id })
+        contents.send('session:updated', {
+          session: { ...saved, status, runtimeContext: undefined, activeRun: undefined },
+          originClientId: 'test:missing-request'
+        })
+      },
+      { saved, status }
+    )
+    await page.locator(`[data-session-id="${saved.id}"]`).first().click()
     const form = page.getByTestId('ordinary-composer-form')
     const editor = page.getByRole('textbox', { name: 'Ask anything' })
     const notice = page.getByTestId('missing-interaction-notice')
@@ -53,11 +45,55 @@ for (const status of ['waiting-permission', 'waiting-for-user'] as const) {
     await expect(editor).toHaveText('Keep this draft during recovery')
     expect(await app.readFakeAgentPrompts()).toEqual(promptsBefore)
     await page.screenshot({ path: testInfo.outputPath('missing-request-recovery.png') })
-    if (status === 'waiting-for-user') return
-    await inject('idle', (session.revision ?? 0) + 101)
+    // Hold the real durable read while a newer native snapshot reaches the renderer. Even a
+    // harmless global refresh used to invalidate recovery, just like another Session's update.
+    await application.evaluate(({ ipcMain }, sessionId) => {
+      const handlers = Reflect.get(ipcMain, '_invokeHandlers') as Map<
+        string,
+        (event: unknown, request: { sessionId: string }) => Promise<unknown>
+      >
+      const original = handlers.get('sessions:load-one')!
+      const probe = { started: false, release: (): void => {} }
+      const gate = new Promise<void>((resolve) => {
+        probe.release = resolve
+      })
+      Reflect.set(globalThis, 'stopRecoveryRead', probe)
+      handlers.set('sessions:load-one', async (event, request) => {
+        if (request.sessionId !== sessionId) return original(event, request)
+        handlers.set('sessions:load-one', original)
+        const authority = await original(event, request)
+        probe.started = true
+        await gate
+        return authority
+      })
+    }, saved.id)
+    await notice.getByRole('button', { name: 'Stop waiting', exact: true }).click()
+    await expect
+      .poll(() => application.evaluate(() => Reflect.get(globalThis, 'stopRecoveryRead').started))
+      .toBe(true)
+    const latest = await page.evaluate(async () => {
+      window.api.acp.onState((state) => {
+        Reflect.set(window, 'stopRecoveryObservedRevision', state.revision)
+      })
+      return window.api.acp.getState()
+    })
+    await application.evaluate(({ BrowserWindow }, state) => {
+      BrowserWindow.getAllWindows()[0].webContents.send('acp:state', state)
+    }, latest)
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, 'stopRecoveryObservedRevision')))
+      .toBe(latest.revision)
+    await application.evaluate(() => Reflect.get(globalThis, 'stopRecoveryRead').release())
     await expect(notice).toHaveCount(0)
     await expect(editor).toHaveText('Keep this draft during recovery')
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeEnabled()
+    await page.getByRole('button', { name: 'Send message', exact: true }).click()
+    await expect(
+      page.getByText('Deterministic reply: Summarize the deterministic fixture.', { exact: true })
+    ).toHaveCount(2)
+    expect(JSON.stringify(await app.readFakeAgentPrompts())).toContain(
+      'Keep this draft during recovery'
+    )
     await page.screenshot({ path: testInfo.outputPath('reconciled-draft.png') })
   })
 }
