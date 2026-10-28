@@ -256,7 +256,7 @@ export const UseCaseCarousel = (): React.JSX.Element | null => {
             {/* Transient status overlays the cover so every card keeps its original size. */}
             {downloading && (
               <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-2 bg-background/95 pr-3 text-xs sm:pr-4">
-                <div className="relative flex h-9 min-w-0 flex-1 items-center overflow-hidden px-3 sm:px-4">
+                <div className="relative flex h-[35px] min-w-0 flex-1 items-center overflow-hidden px-3 sm:px-4">
                   <div
                     role="progressbar"
                     aria-label={t('Example download progress')}
