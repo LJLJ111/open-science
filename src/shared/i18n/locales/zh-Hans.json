@@ -7685,6 +7685,13 @@
     "References were saved. Some PDFs could not be copied; restore them in Zotero and retry.": "文献已保存。部分 PDF 无法复制；请在 Zotero 中恢复文件后重试。",
     "Could not connect to Zotero. Open Zotero 10 or later, then try again.": "无法连接 Zotero。请打开 Zotero 10 或更新版本，然后重试。",
     "In Zotero, open Settings → Advanced and enable “Allow other applications on this computer to communicate with Zotero”, then try again.": "请在 Zotero 的“设置 → 高级”中启用“允许此计算机上的其他应用程序与 Zotero 通信”，然后重试。",
-    "Zotero did not respond in time. Wait for it to finish starting, then try again.": "Zotero 响应超时。请等待其启动完成，然后重试。"
+    "Zotero did not respond in time. Wait for it to finish starting, then try again.": "Zotero 响应超时。请等待其启动完成，然后重试。",
+    "Not collected": "未收集",
+    "Not scheduled": "未安排",
+    "Unable to confirm cancellation": "无法确认取消结果",
+    "Cancellation failed": "取消失败",
+    "The cancellation attempt ended. The job is still being tracked.": "本次取消操作已结束。系统仍在跟踪任务。",
+    "Unable to get job status": "无法获取任务状态",
+    "The scheduler has no available result for this job. The remote process may still be running. Check the scheduler and remote files before deciding what to do next.": "调度器没有此任务的可用结果。远程进程可能仍在运行。请先检查调度器和远程文件，再决定下一步操作。"
   }
 }

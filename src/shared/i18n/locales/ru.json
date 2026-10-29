@@ -8171,6 +8171,13 @@
     "References were saved. Some PDFs could not be copied; restore them in Zotero and retry.": "Источники сохранены. Некоторые PDF не удалось скопировать; восстановите их в Zotero и повторите попытку.",
     "Could not connect to Zotero. Open Zotero 10 or later, then try again.": "Не удалось подключиться к Zotero. Откройте Zotero 10 или новее и повторите попытку.",
     "In Zotero, open Settings → Advanced and enable “Allow other applications on this computer to communicate with Zotero”, then try again.": "В Zotero откройте Настройки → Дополнительно и разрешите другим приложениям на этом компьютере взаимодействовать с Zotero, затем повторите попытку.",
-    "Zotero did not respond in time. Wait for it to finish starting, then try again.": "Zotero не ответил вовремя. Дождитесь завершения запуска и повторите попытку."
+    "Zotero did not respond in time. Wait for it to finish starting, then try again.": "Zotero не ответил вовремя. Дождитесь завершения запуска и повторите попытку.",
+    "Not collected": "Не собрано",
+    "Not scheduled": "Не запланировано",
+    "Unable to confirm cancellation": "Не удалось подтвердить отмену",
+    "Cancellation failed": "Ошибка отмены",
+    "The cancellation attempt ended. The job is still being tracked.": "Эта попытка отмены завершена. Отслеживание задания продолжается.",
+    "Unable to get job status": "Не удалось получить состояние задания",
+    "The scheduler has no available result for this job. The remote process may still be running. Check the scheduler and remote files before deciding what to do next.": "В планировщике нет доступного результата этого задания. Удалённый процесс может всё ещё выполняться. Проверьте планировщик и удалённые файлы, прежде чем решать, что делать дальше."
   }
 }
