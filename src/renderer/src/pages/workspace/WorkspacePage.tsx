@@ -1798,6 +1798,7 @@ const WorkspacePage = ({
                   composerFocusKey: currentDraftKey,
                   canEditDraft,
                   canEditLocalDraft,
+                  sendPreparing: activeSessionHasSendPreparation,
                   persistenceBlocked: persistenceBlockedSessionIds.includes(
                     activeSession?.id ?? ''
                   ),
@@ -1899,6 +1900,7 @@ const WorkspacePage = ({
                   }
                 }}
                 sessionTools={{
+                  newConversation: openNewConversation,
                   menuBindings: createSessionActionBindings({
                     canMutateConversations: isSessionPersistenceReady,
                     canDeleteConversations: false,

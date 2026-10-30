@@ -236,6 +236,7 @@ export function composeCommandDependencies({
       literatureCitationDocument: researchCatalog.literatureCitationDocument,
       literatureCatalog: researchCatalog.literatureCatalog,
       literaturePdfImporter: researchCatalog.literaturePdfImporter,
+      literatureCollector: researchCatalog.literatureCollector,
       contentRepository: managedFiles.contentRepository
     }),
     memory: {
