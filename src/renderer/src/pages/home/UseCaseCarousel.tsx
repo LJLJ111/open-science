@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type Ref } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react'
 import {
   ArrowUpRight,
   ChevronRight,
@@ -17,7 +17,7 @@ import { UseCaseCover } from './UseCaseCover'
 import { UseCaseDetailsDialog } from './UseCaseDetailsDialog'
 import { UseCaseGalleryList } from '../marketplace/UseCaseGalleryList'
 import { UseCaseDetailsPage } from '../marketplace/UseCaseDetailsPage'
-import { useNavigationStore } from '@/stores/navigation-store'
+import { useNavigationStore, type MarketplaceListSnapshot } from '@/stores/navigation-store'
 import { useUseCaseGalleryStore } from './use-case-gallery-store'
 import type { UseCase } from '../../../../shared/use-cases'
 
@@ -32,10 +32,18 @@ export const UseCaseCarousel = ({
 }): React.JSX.Element | null => {
   const { t } = useTranslation()
   const headingId = useId()
+  const projectId = useNavigationStore((state) => state.activeProjectId)
   const initialListState = useNavigationStore((state) =>
     state.marketplaceListContext?.projectId === state.activeProjectId
       ? state.marketplaceListContext?.list
       : undefined
+  )
+  // Capture the owning Project so a late list update cannot overwrite a different Project.
+  const updateListFilters = useCallback(
+    (snapshot: MarketplaceListSnapshot): void => {
+      if (projectId) useNavigationStore.getState().updateMarketplaceList(projectId, snapshot)
+    },
+    [projectId]
   )
   const [introductions] = useState(() => new UseCaseIntroductionLoader())
   useEffect(() => () => introductions.cancelPrefetch(), [introductions])
@@ -366,6 +374,7 @@ export const UseCaseCarousel = ({
               onResetRefreshCompletion={() => setRefreshCompletion(null)}
               onRefresh={() => void refreshCatalog()}
               initialState={initialListState}
+              onFiltersChange={updateListFilters}
               onOpenMarketplace={
                 compact
                   ? (snapshot) => useNavigationStore.getState().openMarketplace('user', snapshot)

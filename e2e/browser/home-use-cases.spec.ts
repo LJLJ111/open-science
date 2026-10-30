@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 const catalog = Array.from({ length: 7 }, (_, index) => ({
   name: `case-${index + 1}`,
@@ -1012,6 +1012,46 @@ test('preserves the compact marketplace filters and visible case across full-pag
   )
   await expect
     .poll(() => full.locator('[data-use-case-browser-scroll]').evaluate((el) => el.scrollTop))
+    .toBe(0)
+})
+
+test('syncs changed and cleared full-page filters back to the project panel', async ({ page }) => {
+  await page.goto('/home-use-cases.html?panel')
+  await page.getByRole('button', { name: 'Sharing marketplace', exact: true }).click()
+  const panel = page.getByRole('tabpanel', { name: 'Sharing marketplace', exact: true })
+  const search = (surface: Locator): Locator =>
+    surface.getByRole('textbox', { name: 'Search examples' })
+  const category = (surface: Locator, name: string): Locator =>
+    surface.getByRole('button', { name, exact: true })
+  await search(panel).fill('Research example 2')
+  await category(panel, 'Biology').click()
+  await panel.getByRole('button', { name: 'View in sharing marketplace' }).click()
+  const full = page.getByRole('main')
+  await search(full).fill('Research example 3')
+  await category(full, 'Science').click()
+  await expect(full.getByRole('article')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Back to Project', exact: true }).click()
+  await expect(search(panel)).toHaveValue('Research example 3')
+  await expect(category(panel, 'Science')).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.getByRole('article')).toHaveCount(1)
+  await expect(
+    panel.getByRole('article', { name: 'Research example 3', exact: true })
+  ).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'Conversation draft' })).toHaveValue(
+    'Keep my draft'
+  )
+
+  // A second round trip must also transfer an empty query and the all-categories selection.
+  await panel.getByRole('button', { name: 'View in sharing marketplace' }).click()
+  await expect(search(full)).toHaveValue('Research example 3')
+  await search(full).fill('')
+  await category(full, 'All categories').click()
+  await page.getByRole('button', { name: 'Back to Project', exact: true }).click()
+  await expect(search(panel)).toHaveValue('')
+  await expect(category(panel, 'All categories')).toHaveAttribute('aria-pressed', 'true')
+  await expect(panel.getByRole('article')).toHaveCount(6)
+  await expect
+    .poll(() => panel.locator('[data-use-case-browser-scroll]').evaluate((el) => el.scrollTop))
     .toBe(0)
 })
 

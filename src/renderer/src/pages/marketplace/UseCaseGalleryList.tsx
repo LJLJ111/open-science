@@ -63,6 +63,7 @@ export const UseCaseGalleryList = ({
   onResetRefreshCompletion,
   onRefresh,
   onOpenMarketplace,
+  onFiltersChange,
   initialState
 }: {
   items: UseCase[]
@@ -73,6 +74,7 @@ export const UseCaseGalleryList = ({
   onResetRefreshCompletion: () => void
   onRefresh: () => void
   onOpenMarketplace?: (snapshot: MarketplaceListSnapshot) => void
+  onFiltersChange?: (snapshot: MarketplaceListSnapshot) => void
   initialState?: MarketplaceListSnapshot
 }): React.JSX.Element => {
   const { t } = useTranslation()
@@ -109,6 +111,21 @@ export const UseCaseGalleryList = ({
     setCategory(activeCategory)
     setCount(USE_CASE_BATCH_SIZE)
   }
+  // Persist changed filters in both layouts, including a category retired by a refresh.
+  // Unchanged filters retain the original loaded count and anchor for the return trip.
+  useEffect(() => {
+    if (
+      !initialState ||
+      (search === initialState.search && activeCategory === initialState.category)
+    )
+      return
+    onFiltersChange?.({
+      search,
+      category: activeCategory,
+      count: USE_CASE_BATCH_SIZE,
+      scrollTop: 0
+    })
+  }, [search, activeCategory, initialState, onFiltersChange])
   const previousCategory = useRef(activeCategory)
   useEffect(() => {
     if (previousCategory.current !== activeCategory && viewportRef.current)

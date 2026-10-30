@@ -112,6 +112,7 @@ type NavigationStore = {
   returnFromLibrary: (origin: NavigationOrigin) => void
   returnToProject: (origin: NavigationOrigin) => void
   openMarketplace: (origin: NavigationOrigin, list?: MarketplaceListSnapshot) => void
+  updateMarketplaceList: (projectId: string, list: MarketplaceListSnapshot) => void
   openLibrary: (origin: NavigationOrigin, options?: { section?: 'library' }) => void
   openLiteratureItem: (
     itemId: string,
@@ -325,6 +326,14 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
             ? { projectId: state.activeProjectId, list }
             : undefined
       }))
+    ),
+
+  // Only an existing Project handoff accepts updates; stale events cannot seed another Project.
+  updateMarketplaceList: (projectId, list) =>
+    set((state) =>
+      state.activeProjectId === projectId && state.marketplaceListContext?.projectId === projectId
+        ? { marketplaceListContext: { projectId, list } }
+        : state
     ),
 
   openLibrary: (origin, options) =>

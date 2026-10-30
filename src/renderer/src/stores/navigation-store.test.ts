@@ -81,6 +81,46 @@ beforeEach(() => {
 })
 
 describe('navigation store', () => {
+  it('returns the latest marketplace filters to the same project without changing its conversation', () => {
+    useSessionStore.getState().hydrateSessions([createSession({ id: 'selected' })])
+    useSessionStore.setState({ selectedSessionId: 'selected' })
+    useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
+    useNavigationStore.getState().openMarketplace('user', {
+      search: 'old',
+      category: 'science',
+      count: 18,
+      scrollTop: 400,
+      anchor: { slug: 'old-case', offset: 20 }
+    })
+    const list = { search: 'new', category: 'biology', count: 6, scrollTop: 0 }
+    useNavigationStore.getState().updateMarketplaceList('project-a', list)
+    useNavigationStore.getState().returnToProject('user')
+    expect(useNavigationStore.getState().marketplaceListContext).toEqual({
+      projectId: 'project-a',
+      list
+    })
+    expect(useSessionStore.getState().selectedSessionId).toBe('selected')
+    const cleared = { search: '', category: '', count: 6, scrollTop: 0 }
+    useNavigationStore.getState().updateMarketplaceList('project-a', cleared)
+    expect(useNavigationStore.getState().marketplaceListContext?.list).toEqual(cleared)
+  })
+
+  it('ignores marketplace updates from another project or after leaving the project context', () => {
+    const list = { search: 'research', category: 'science', count: 18, scrollTop: 400 }
+    const changed = { search: 'changed', category: '', count: 6, scrollTop: 0 }
+    useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
+    useNavigationStore.getState().openMarketplace('user', list)
+    useNavigationStore.getState().updateMarketplaceList('project-b', changed)
+    expect(useNavigationStore.getState().marketplaceListContext?.list).toEqual(list)
+    useNavigationStore.getState().openProject('project-b', 'user')
+    useNavigationStore.getState().updateMarketplaceList('project-a', changed)
+    expect(useNavigationStore.getState().marketplaceListContext).toBeUndefined()
+    useNavigationStore.getState().goHome('user')
+    useNavigationStore.getState().openMarketplace('user')
+    useNavigationStore.getState().updateMarketplaceList('project-b', changed)
+    expect(useNavigationStore.getState().marketplaceListContext).toBeUndefined()
+  })
+
   it('transfers marketplace list context only after leaving the project and clears it for a fresh entry', () => {
     const list = { search: 'research', category: 'science', count: 18, scrollTop: 400 }
     useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
