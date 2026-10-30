@@ -70,6 +70,47 @@ it.each(['network', 'invalid', 'http'])(
   }
 )
 
+it.each([false, true])(
+  'serves fresh cases despite cache write failure (old cache: %s) and retries persistence',
+  async (hasOldCache) => {
+    if (hasOldCache) await writeFile(cachePath, JSON.stringify(manifest('Old')))
+    // A directory at the temporary-file path rejects writes on every supported OS.
+    await mkdir(`${cachePath}.tmp`)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json(manifest('Fresh')))
+    )
+    const catalog = new UseCaseCatalog(directory)
+    expect((await catalog.refresh(true))[0].title).toBe('Fresh')
+    expect((await catalog.cached())[0].title).toBe('Fresh')
+    if (hasOldCache) expect(JSON.parse(await readFile(cachePath, 'utf8'))).toEqual(manifest('Old'))
+
+    await rm(`${cachePath}.tmp`, { recursive: true })
+    await catalog.refresh(true)
+    expect(JSON.parse(await readFile(cachePath, 'utf8'))).toEqual(manifest('Fresh'))
+    const restarted = new UseCaseCatalog(directory)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('offline')
+      })
+    )
+    expect((await restarted.refresh())[0].title).toBe('Fresh')
+  }
+)
+
+it('serves a valid catalog even when its cache directory cannot be created', async () => {
+  const unavailableRoot = join(directory, 'not-a-directory')
+  await writeFile(unavailableRoot, '')
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(manifest('Fresh')))
+  )
+  const catalog = new UseCaseCatalog(unavailableRoot)
+  expect((await catalog.refresh())[0].title).toBe('Fresh')
+  expect((await catalog.cached())[0].title).toBe('Fresh')
+})
+
 it('reports first-load failure when no valid cached catalog is available', async () => {
   await writeFile(cachePath, '{broken')
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))

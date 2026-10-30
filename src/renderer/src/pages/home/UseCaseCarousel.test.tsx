@@ -444,6 +444,37 @@ it('keeps cached cards on failure and shows completion on the refresh button', a
   expect(ui.getByRole('button', { name: 'Case 1' })).toBeTruthy()
 })
 
+it.each([false, true])(
+  'retries only failed covers on manual refresh (catalog failure: %s)',
+  async (catalogFailure) => {
+    await act(async () => root.render(<UseCaseCarousel variant="marketplace" />))
+    const ui = within(container)
+    const images = container.querySelectorAll('article img')
+    const failed = images[0] as HTMLImageElement
+    const healthy = images[1] as HTMLImageElement
+    const originalFailedSource = failed.src
+    const healthySource = healthy.src
+    await act(async () => {
+      fireEvent.error(failed)
+      fireEvent.load(healthy)
+    })
+    if (catalogFailure)
+      vi.mocked(window.api.sessions.useCaseCatalog).mockRejectedValue(new Error('offline'))
+    const refresh = ui.getByRole('button', { name: 'Refresh examples' })
+    await act(async () => fireEvent.click(refresh))
+    const retried = container.querySelector('article img') as HTMLImageElement
+    expect(retried.src).not.toBe(originalFailedSource)
+    expect(container.querySelectorAll('article img')[1]).toBe(healthy)
+    expect(healthy.src).toBe(healthySource)
+    expect(healthy.className).toContain('opacity-100')
+    const retrySource = retried.src
+    await act(async () => fireEvent.error(retried))
+    expect(retried.src).toBe(retrySource)
+    await act(async () => fireEvent.click(refresh))
+    expect((container.querySelector('article img') as HTMLImageElement).src).not.toBe(retrySource)
+  }
+)
+
 it('keeps standalone marketplace details in a dialog without replacing the list', async () => {
   await act(async () => root.render(<UseCaseCarousel variant="marketplace" />))
   const ui = within(container)

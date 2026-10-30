@@ -12,6 +12,7 @@ export class UseCaseCatalog {
   private readonly path: string
   private items: UseCase[] = []
   private hasCatalog = false
+  private catalogNeedsPersistence = false
   private readonly loaded: Promise<void>
   private refreshed?: Promise<UseCase[]>
   private refreshing?: Promise<UseCase[]>
@@ -238,13 +239,22 @@ export class UseCaseCatalog {
     const manifest: unknown = await response.json()
     const next = parseUseCases(manifest)
     const previous = this.items
-    // Publish only validated complete manifests, leaving the previous cache intact on failure.
+    // Publish validated data independently of optional disk storage so a full or read-only
+    // cache cannot hide a successful refresh. Retain pending persistence across unchanged replies.
     if (!this.hasCatalog || JSON.stringify(next) !== JSON.stringify(previous)) {
-      await mkdir(dirname(this.path), { recursive: true })
-      await writeFile(`${this.path}.tmp`, JSON.stringify(manifest), { mode: 0o600 })
-      await rename(`${this.path}.tmp`, this.path)
       this.items = next
       this.hasCatalog = true
+      this.catalogNeedsPersistence = true
+    }
+    if (this.catalogNeedsPersistence) {
+      try {
+        await mkdir(dirname(this.path), { recursive: true })
+        await writeFile(`${this.path}.tmp`, JSON.stringify(manifest), { mode: 0o600 })
+        await rename(`${this.path}.tmp`, this.path)
+        this.catalogNeedsPersistence = false
+      } catch {
+        // Preserve the last complete disk cache and retry persistence on the next refresh.
+      }
     }
     if (force) await this.refreshCachedIntroductions(previous)
     return this.items

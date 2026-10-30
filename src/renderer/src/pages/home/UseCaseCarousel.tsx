@@ -69,6 +69,7 @@ export const UseCaseCarousel = ({
     catalogRevision.current++
     setRefreshing(true)
     setRefreshCompletion(null)
+    useUseCaseGalleryStore.getState().retryFailedCovers()
     if (!useUseCaseGalleryStore.getState().items?.length) setCatalogStatus('loading')
     try {
       receive(await window.api.sessions.useCaseCatalog('reload'), true)

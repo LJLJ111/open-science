@@ -483,6 +483,57 @@ test('keeps a full-size cover placeholder until an image loads, including failed
   expect(await sizes()).toEqual(before)
 })
 
+for (const catalogFails of [false, true]) {
+  test(`retries a failed cover without reloading healthy covers when catalog refresh ${catalogFails ? 'fails' : 'succeeds'}`, async ({
+    page
+  }) => {
+    let recover = false
+    const coverRequests = new Map<string, number>()
+    await page.route('**/manifest.json', (route) =>
+      recover && catalogFails
+        ? route.fulfill({ status: 503, body: 'temporary failure' })
+        : route.fulfill({ json: catalog.slice(0, 2) })
+    )
+    await page.route('**/usecases/*/cover.svg*', (route) => {
+      const path = new URL(route.request().url()).pathname
+      coverRequests.set(path, (coverRequests.get(path) ?? 0) + 1)
+      return !recover && path.includes('/case-1/')
+        ? route.fulfill({ status: 503, body: 'temporary failure' })
+        : route.fulfill({
+            contentType: 'image/svg+xml',
+            body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="green"/></svg>'
+          })
+    })
+    await page.goto('/home-use-cases.html')
+    await page.getByRole('button', { name: 'Sharing marketplace', exact: true }).click()
+    const cards = page.getByRole('main').getByRole('article')
+    await expect(cards).toHaveCount(2)
+    const failed = cards.nth(0).locator('img')
+    const healthy = cards.nth(1).locator('img')
+    await expect
+      .poll(() => failed.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth === 0))
+      .toBe(true)
+    await expect.poll(() => healthy.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(640)
+    const healthyRequests = coverRequests.get('/open-science/usecases/case-2/cover.svg')
+    const healthySource = await healthy.getAttribute('src')
+    recover = true
+    await page.getByRole('button', { name: 'Refresh examples' }).click()
+    await expect.poll(() => failed.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(640)
+    await expect(page.getByRole('button', { name: 'Refresh examples' })).toBeEnabled()
+    expect(coverRequests.get('/open-science/usecases/case-2/cover.svg')).toBe(healthyRequests)
+    await expect(healthy).toHaveAttribute('src', healthySource!)
+    await expect(cards).toHaveCount(2)
+    await cards.first().getByRole('button', { name: 'Research example 1', exact: true }).click()
+    const detailCover = page
+      .getByRole('dialog', { name: 'Case details', exact: true })
+      .locator('img')
+      .first()
+    await expect
+      .poll(() => detailCover.evaluate((el: HTMLImageElement) => el.naturalWidth))
+      .toBe(640)
+  })
+}
+
 test('keeps the download accessible from project navigation and cancels through global progress', async ({
   page
 }) => {

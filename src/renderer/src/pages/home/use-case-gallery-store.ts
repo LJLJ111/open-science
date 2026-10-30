@@ -7,6 +7,8 @@ type GalleryState = {
   items: UseCase[] | undefined
   slugs: string[]
   refreshRevision: number
+  coverRetryRevision: number
+  retryFailedCovers: () => void
   receive: (items: UseCase[], refreshDetails?: boolean) => void
   loadMore: () => void
 }
@@ -16,6 +18,9 @@ export const useUseCaseGalleryStore = create<GalleryState>((set) => ({
   items: undefined,
   slugs: [],
   refreshRevision: 0,
+  coverRetryRevision: 0,
+  // Image recovery remains available even when the catalog request itself fails.
+  retryFailedCovers: () => set((state) => ({ coverRetryRevision: state.coverRetryRevision + 1 })),
   receive: (items, refreshDetails = false) =>
     set((state) => {
       const available = new Set(items.map((item) => item.slug))
