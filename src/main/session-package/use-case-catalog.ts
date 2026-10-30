@@ -194,38 +194,38 @@ export class UseCaseCatalog {
         ...candidates
       ])
     ]
-    const interrupted: string[] = []
-    const completed: string[] = []
+    const started: string[] = []
+    const interrupted = new Set<string>()
     const signal = AbortSignal.timeout(15000)
     const worker = async (): Promise<void> => {
       while (!signal.aborted) {
         const url = urls.shift()
         if (!url) return
+        started.push(url)
         // Let older reads finish first so they cannot overwrite a refreshed response.
         await this.introductionRequests.get(url)?.catch(() => undefined)
         if (signal.aborted) {
-          interrupted.push(url)
+          interrupted.add(url)
           return
         }
         const request = this.loadIntroduction(url, true, signal).finally(() =>
           this.introductionRequests.delete(url)
         )
         this.introductionRequests.set(url, request)
-        await request.then(
-          () => {
-            completed.push(url)
-          },
-          () => {
-            if (signal.aborted) interrupted.push(url)
-            else completed.push(url)
-          }
-        )
+        await request.catch(() => {
+          if (signal.aborted) interrupted.add(url)
+        })
       }
     }
     await Promise.all(Array.from({ length: Math.min(3, urls.length) }, worker))
     // Unstarted URLs go first so repeatedly slow sources cannot monopolize each pass.
-    // Rebuild against the next manifest before reuse, dropping removed or replaced URLs.
-    this.introductionRefreshOrder = [...urls, ...interrupted, ...completed]
+    // Retain assignment order, not completion order: filesystem/network timing must not
+    // repeatedly move the same interrupted entry behind previously checked content.
+    this.introductionRefreshOrder = [
+      ...urls,
+      ...started.filter((url) => interrupted.has(url)),
+      ...started.filter((url) => !interrupted.has(url))
+    ]
   }
 
   private async fetchOnce(force: boolean): Promise<UseCase[]> {
