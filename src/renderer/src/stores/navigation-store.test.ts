@@ -60,6 +60,7 @@ beforeEach(() => {
   useSessionStore.setState(createInitialSessionState())
   useNavigationStore.setState({
     view: 'home',
+    marketplaceListContext: undefined,
     activeProjectId: undefined,
     userNavigationRevision: 0,
     explicitNavigationRevision: 0,
@@ -80,6 +81,83 @@ beforeEach(() => {
 })
 
 describe('navigation store', () => {
+  it('transfers marketplace list context only after leaving the project and clears it for a fresh entry', () => {
+    const list = { search: 'research', category: 'science', count: 18, scrollTop: 400 }
+    useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
+    usePreviewWorkbenchStore.setState({ activeProjectId: 'project-a', activeItemId: 'file-1' })
+    const guard = vi.fn(() => false)
+    previewLeaveGuards.register(workbenchPreviewGuardScope('project-a', 'file-1')!, guard)
+    useNavigationStore.getState().openMarketplace('user', list)
+    expect(useNavigationStore.getState().marketplaceListContext).toBeUndefined()
+    guard.mockReturnValue(true)
+    useNavigationStore.getState().openMarketplace('user', list)
+    expect(useNavigationStore.getState().marketplaceListContext).toEqual({
+      projectId: 'project-a',
+      list
+    })
+    useNavigationStore.getState().returnToProject('user')
+    expect(useNavigationStore.getState().marketplaceListContext?.list).toEqual(list)
+    useNavigationStore.getState().goHome('user')
+    useNavigationStore.getState().openMarketplace('user')
+    expect(useNavigationStore.getState().marketplaceListContext).toBeUndefined()
+  })
+
+  it('opens the sharing marketplace as a guarded top-level destination', () => {
+    useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
+    usePreviewWorkbenchStore.setState({ activeProjectId: 'project-a', activeItemId: 'file-1' })
+    const guard = vi.fn(() => false)
+    previewLeaveGuards.register(workbenchPreviewGuardScope('project-a', 'file-1')!, guard)
+    useNavigationStore.getState().openMarketplace('user')
+    expect(useNavigationStore.getState().view).toBe('workspace')
+    guard.mockReturnValue(true)
+    useNavigationStore.getState().openMarketplace('user')
+    expect(useNavigationStore.getState()).toMatchObject({
+      view: 'marketplace',
+      userNavigationRevision: 1
+    })
+    useNavigationStore.getState().goHome('user')
+    expect(useNavigationStore.getState().view).toBe('home')
+  })
+
+  it.each(['older', undefined])(
+    'returns from marketplace preserving the selected conversation %s',
+    (selectedSessionId) => {
+      useSessionStore
+        .getState()
+        .hydrateSessions([
+          createSession({ id: 'older', updatedAt: 1 }),
+          createSession({ id: 'newer', updatedAt: 2 })
+        ])
+      useSessionStore.setState({ selectedSessionId })
+      useNavigationStore.setState({ view: 'workspace', activeProjectId: 'project-a' })
+      useNavigationStore.getState().openMarketplace('user')
+      useNavigationStore.getState().returnToProject('user')
+      expect(useNavigationStore.getState()).toMatchObject({
+        view: 'workspace',
+        activeProjectId: 'project-a'
+      })
+      expect(useSessionStore.getState().selectedSessionId).toBe(selectedSessionId)
+    }
+  )
+
+  it.each(['home', 'deleted', 'archived'])(
+    'returns home from marketplace when the origin is %s',
+    (origin) => {
+      useNavigationStore.setState({
+        view: 'marketplace',
+        activeProjectId: origin === 'home' ? undefined : 'project-a'
+      })
+      if (origin === 'deleted') useProjectStore.setState({ projects: [] })
+      if (origin === 'archived')
+        useProjectStore.setState({ projects: [{ ...createProject('project-a'), archivedAt: 2 }] })
+      useNavigationStore.getState().returnToProject('user')
+      expect(useNavigationStore.getState()).toMatchObject({
+        view: 'home',
+        activeProjectId: undefined
+      })
+    }
+  )
+
   it.each(['library', 'project', 'collection', 'item'] as const)(
     'returns from %s to the selected older conversation instead of the latest one',
     (entry) => {
